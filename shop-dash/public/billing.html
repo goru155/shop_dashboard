@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Billing</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="nav.css">
+
+  <!-- PDF LIBRARY -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+  <style>
+    .table-container{
+      max-height:450px;
+      overflow-y:auto;
+      border:1px solid #ddd;
+      margin-top:15px;
+      border-radius:8px;
+      width:100%;
+    }
+
+    table{
+      width:100%;
+      border-collapse:collapse;
+      background:white;
+    }
+
+    th,td{
+      padding:12px;
+      border-bottom:1px solid #eee;
+      text-align:center;
+    }
+
+    th{
+      background:#6b3fa0;
+      color:white;
+      position:sticky;
+      top:0;
+    }
+
+    button{
+      background:#6b3fa0;
+      color:white;
+      border:none;
+      padding:7px 18px;
+      border-radius:20px;
+      cursor:pointer;
+      margin:4px;
+    }
+
+    .modal{
+      display:none;
+      position:fixed;
+      left:0;
+      top:0;
+      width:100%;
+      height:100%;
+      background:rgba(0,0,0,.4);
+    }
+
+    .modal-content{
+      background:white;
+      padding:20px;
+      margin:60px auto;
+      width:80%;
+      border-radius:10px;
+      max-height:80%;
+      overflow:auto;
+    }
+
+    .modal-header{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      margin-bottom:10px;
+    }
+
+    /* TAB STYLE */
+    .tabs{
+      display:flex;
+      gap:10px;
+      margin-bottom:15px;
+    }
+
+    .tab-btn{
+      padding:8px 18px;
+      border-radius:20px;
+      border:none;
+      background:#ddd;
+      cursor:pointer;
+      font-weight:bold;
+    }
+
+    .tab-btn.active{
+      background:#6b3fa0;
+      color:white;
+    }
+
+    .tab-content{
+      display:none;
+    }
+
+    .tab-content.active{
+      display:block;
+    }
+
+  </style>
+</head>
+
+<body>
+
+<header>
+  <h3>Shop Admin</h3>
+  <nav>
+    <a href="inventory.html">Inventory</a>
+    <a href="customers.html">Customers</a>
+    <a href="billing.html">Billing</a>
+  </nav>
+</header>
+
+<section class="card">
+
+  <h2>Customer Billing</h2>
+
+  <!-- TABS -->
+  <div class="tabs">
+    <button class="tab-btn active" onclick="openTab('outstanding')">Outstanding Bills</button>
+    <button class="tab-btn" onclick="openTab('paid')">Paid Bills</button>
+  </div>
+
+  <!-- OUTSTANDING -->
+  <div id="outstanding" class="tab-content active">
+
+    <div class="table-container">
+      <table>
+        <thead>
+          <tr>
+            <th>Customer</th>
+            <th>Total Outstanding (₹)</th>
+            <th>Details</th>
+          </tr>
+        </thead>
+        <tbody id="billingTable"></tbody>
+      </table>
+    </div>
+
+  </div>
+
+  <!-- PAID -->
+  <div id="paid" class="tab-content">
+
+    <div class="table-container">
+      <table>
+        <thead>
+          <tr>
+            <th>Customer</th>
+            <th>Status</th>
+            <th>Details</th>
+          </tr>
+        </thead>
+        <tbody id="paidBillsTable"></tbody>
+      </table>
+    </div>
+
+  </div>
+
+</section>
+
+<!-- MODAL START -->
+<div id="billModal" class="modal">
+  <div class="modal-content">
+
+    <div class="modal-header">
+      <h3 id="modalCustomerName">Customer Ledger</h3>
+      <div>
+        <button onclick="generatePDF()">Generate Bill (PDF)</button>
+        <button id="addPaymentBtn">Add Payment</button>
+        <button onclick="closeBill()">Close</button>
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Product</th>
+          <th>Qty</th>
+          <th>Amount</th>
+          <th>Payment</th>
+        </tr>
+      </thead>
+      <tbody id="ledgerBody"></tbody>
+    </table>
+
+  </div>
+</div>
+<!-- MODAL END -->
+
+<script type="module" src="app.js"></script>
+
+<script>
+
+function closeBill(){
+  document.getElementById("billModal").style.display="none";
+}
+
+function openTab(tab){
+
+  document.querySelectorAll(".tab-content").forEach(t=>{
+    t.classList.remove("active")
+  })
+
+  document.querySelectorAll(".tab-btn").forEach(b=>{
+    b.classList.remove("active")
+  })
+
+  document.getElementById(tab).classList.add("active")
+
+  event.target.classList.add("active")
+}
+
+</script>
+
+</body>
+</html>

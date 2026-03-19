@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Inventory</title>
+
+  <!-- ✅ Mobile Responsive Meta -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="nav.css">
+
+<style>
+
+body {
+  margin: 0;
+  padding: 15px;
+  box-sizing: border-box;
+  font-family: Arial, sans-serif;
+}
+
+/* ================= HEADER ================= */
+
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* nav a {
+  margin-left: 12px;
+  text-decoration: none;
+  color: #6b3fa0;
+  font-weight: 500;
+} */
+ header nav a {
+  color: white;
+  margin-left: 20px;
+  font-size: 15px;
+  transition: 0.3s;
+}
+
+header nav a:hover {
+  color: #ffd700;
+}
+
+/* ================= CARD ================= */
+
+.card {
+  background: white;
+  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+  margin-top: 20px;
+}
+
+/* ================= SEARCH ================= */
+
+#productSearch {
+  padding: 8px 12px;
+  width: 100%;
+  max-width: 300px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  margin-bottom: 15px;
+}
+
+/* ================= INPUT ROW ================= */
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 15px;
+}
+
+.row input {
+  flex: 1 1 180px;
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+}
+
+.row button {
+  flex: 1 1 150px;
+}
+
+/* ================= TABLE ================= */
+
+.table-container {
+  max-height: 450px;
+  overflow-y: auto;
+  overflow-x: auto;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  width: 100%;
+}
+
+table {
+  width: 100%;
+  min-width: 950px;
+  border-collapse: collapse;
+  background: white;
+}
+
+th, td {
+  padding: 12px;
+  border-bottom: 1px solid #eee;
+  text-align: center;
+  white-space: nowrap;
+}
+
+th {
+  background: #6b3fa0;
+  color: white;
+  position: sticky;
+  top: 0;
+}
+
+tr:hover {
+  background: #f7f4fb;
+}
+
+/* ================= CUSTOMER SEARCH ================= */
+
+.custSearch {
+  width: 100%;
+  padding: 6px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+/* ================= QTY STEPPER ================= */
+
+.qtyStepper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.qtyStepper button {
+  width: 30px;
+  height: 30px;
+  border: none;
+  background: #6b3fa0;
+  color: white;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.qtyStepper input {
+  width: 55px;
+  text-align: center;
+  padding: 6px;
+}
+
+/* ================= SWITCH ================= */
+
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 42px;
+  height: 22px;
+  margin-right: 8px;
+}
+
+.switch input {
+  display: none;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  background: #ccc;
+  border-radius: 20px;
+  top: 0; left: 0; right: 0; bottom: 0;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 2px;
+  bottom: 2px;
+  background: white;
+  border-radius: 50%;
+  transition: .2s;
+}
+
+input:checked + .slider {
+  background: #6b3fa0;
+}
+
+input:checked + .slider:before {
+  transform: translateX(20px);
+}
+
+/* ================= BUTTONS ================= */
+
+button {
+  background: #6b3fa0;
+  color: white;
+  border: none;
+  padding: 8px 18px;
+  border-radius: 20px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+button:hover {
+  background: #5a3387;
+}
+
+/* ================= MOBILE ADJUSTMENTS ================= */
+
+@media (max-width: 768px) {
+
+  th, td {
+    padding: 6px;
+    font-size: 12px;
+  }
+
+  button {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+
+  .qtyStepper input {
+    width: 45px;
+  }
+
+  header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  nav {
+    margin-top: 6px;
+  }
+
+}
+
+</style>
+</head>
+
+<body>
+
+<header>
+  <h3>Shop Admin</h3>
+  <nav>
+    <a href="inventory.html">Inventory</a>
+    <a href="customers.html">Customers</a>
+    <a href="billing.html">Billing</a>
+  </nav>
+</header>
+
+<section class="card">
+  <h2>Inventory Management</h2>
+
+  <input 
+    type="text" 
+    id="productSearch" 
+    placeholder="🔍 Search product..."
+  >
+
+  <div class="row">
+    <input id="pname" placeholder="Product name">
+    <input id="pprice" type="number" placeholder="Price">
+    <input id="pstock" type="number" placeholder="Stock">
+    <button onclick="addProduct()">Add Product</button>
+  </div>
+
+  <div class="table-container">
+    <table>
+      <thead>
+        <tr>
+          <th>Product</th>
+          <th>Price (₹)</th>
+          <th>Stock</th>
+          <th>Sold To</th>
+          <th>Qty</th>
+          <th>Cash / Credit</th>
+          <th>Remove</th>
+        </tr>
+      </thead>
+      <tbody id="inventoryList"></tbody>
+    </table>
+  </div>
+</section>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
