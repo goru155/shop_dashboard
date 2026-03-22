@@ -50,7 +50,7 @@ window.showCustomerSuggestions = function (inputEl) {
 
   box.innerHTML = matches.map(c => `
     <div onclick="selectCustomer('${rowId}','${c.id}','${c.name}')"
-         style="background:white;border:1px solid #ddd;padding:6px;cursor:pointer">
+          style="background:white;border:1px solid #ddd;padding:6px;cursor:pointer">
       ${c.name}
     </div>`).join("");
 };
@@ -72,7 +72,7 @@ window.addProduct = async () => {
 };
 
 /* =========================
-   INVENTORY REALTIME + SEARCH
+    INVENTORY REALTIME + SEARCH
 ========================= */
 
 const inventoryList = document.getElementById("inventoryList");
@@ -218,7 +218,7 @@ window.sellProduct = async (id, stock) => {
 
 };
 /* =========================
-   BILLING TABLE
+    BILLING TABLE
 ========================= */
 
 const billingTable = document.getElementById("billingTable");
@@ -298,7 +298,7 @@ if (billingTable) {
 }
 
 /* =========================
-   LEDGER MODAL + PDF + RETURN + FILTER
+    LEDGER MODAL + PDF + RETURN + FILTER
 ========================= */
 
 let currentLedgerData = [];
@@ -1015,8 +1015,8 @@ window.generatePDF = function () {
   // let creditTotal = 0;
   // let paymentTotal = 0;
 
-let creditTotal = 0;
-let advanceTotal = 0;
+let currentBillTotal = 0;
+let previousBalance = 0;
 currentLedgerData.sort((a, b) => a.rawDate.seconds - b.rawDate.seconds);
 let lastAdvanceIndex = -1;
 
@@ -1025,13 +1025,20 @@ currentLedgerData.forEach((item, index) => {
     lastAdvanceIndex = index;
   }
 });
+
+// Calculate previous balance (debt positive, advance negative)
+currentLedgerData.slice(0, lastAdvanceIndex + 1).forEach((item) => {
+  if (item.type === "credit") previousBalance += item.amount;
+  if (item.type === "advance") previousBalance -= item.amount;
+});
+
 currentLedgerData
   .slice(lastAdvanceIndex + 1)
   .forEach((item) => {
 
   if (item.type === "credit") {
 
-    creditTotal += item.amount;
+    currentBillTotal += item.amount;
 
     const rate = item.amount / item.qty;
 
@@ -1044,16 +1051,9 @@ currentLedgerData
     y += 8;
   }
 
-  if (item.type === "advance") {
-    advanceTotal += item.amount;
-  }
-
 });
 
-// const netBalance = creditTotal - advanceTotal;
-const advanceUsed = Math.min(creditTotal, advanceTotal);
-const netBalance = creditTotal - advanceUsed;
-const remainingAdvance = advanceTotal - advanceUsed;
+const netBalance = previousBalance + currentBillTotal;
 
   y += 10;
 
@@ -1062,17 +1062,20 @@ const remainingAdvance = advanceTotal - advanceUsed;
 
 doc.setFontSize(11);
 
-doc.text("Total Credit:", 120, y);
-doc.text("Rs " + creditTotal.toFixed(2), 165, y);
+doc.text("Current Bill:", 120, y);
+doc.text("Rs " + currentBillTotal.toFixed(2), 165, y);
 
 y += 8;
 
-// doc.text("Advance Used:", 120, y);
-// doc.text("Rs -" + advanceTotal.toFixed(2), 165, y);
-doc.text("Advance Used:", 120, y);
-doc.text("Rs -" + advanceUsed.toFixed(2), 165, y);
-
-y += 8;
+if (previousBalance > 0) {
+  doc.text("Previous Debt:", 120, y);
+  doc.text("Rs " + previousBalance.toFixed(2), 165, y);
+  y += 8;
+} else if (previousBalance < 0) {
+  doc.text("Advance Balance Used:", 120, y);
+  doc.text("Rs -" + Math.abs(previousBalance).toFixed(2), 165, y);
+  y += 8;
+}
 
 doc.line(120, y - 2, 195, y - 2);
 
@@ -1083,14 +1086,10 @@ doc.setFontSize(13);
 if (netBalance > 0) {
   doc.text("Net Outstanding:", 120, y);
   doc.text("Rs " + netBalance.toFixed(2), 165, y);
-}
-// else if (netBalance < 0)
-else if(remainingAdvance >0){
+} else if (netBalance < 0) {
   doc.text("Advance Balance:", 120, y);
-  // doc.text("Rs " + Math.abs(netBalance).toFixed(2), 165, y);
-  doc.text("Rs " + remainingAdvance.toFixed(2), 165, y);
-}
-else {
+  doc.text("Rs " + Math.abs(netBalance).toFixed(2), 165, y);
+} else {
   doc.text("Status:", 120, y);
   doc.text("Fully Settled", 165, y);
 }
