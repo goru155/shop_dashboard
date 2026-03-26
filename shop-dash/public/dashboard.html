@@ -110,18 +110,41 @@
 
 <body>
 
-<header>Shop Admin Portal</header>
+<header>Shop Portal</header>
 
 <section>
   <h3>Inventory</h3>
-  <input id="search" placeholder="Search product..." onkeyup="searchInventory()">
+  <!-- Add Inventory Box -->
+  <div style="background: #fafafa; border: 1px solid #eee; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+    <h4 style="margin-top: 0; margin-bottom: 10px; color: #444;">Add New Product</h4>
+    <input id="pname" placeholder="Product name">
+    <input id="pprice" type="number" placeholder="Price">
+    <input id="pstock" type="number" placeholder="Stock">
+    <button onclick="addProduct()">Add Product</button>
+  </div>
 
-  <input id="pname" placeholder="Product name">
-  <input id="pprice" type="number" placeholder="Price">
-  <input id="pstock" type="number" placeholder="Stock">
-  <button onclick="addProduct()">Add Product</button>
+  <!-- Existing Inventory Box -->
+  <div style="background: #fafafa; border: 1px solid #eee; padding: 15px; border-radius: 8px;">
+    <h4 style="margin-top: 0; margin-bottom: 10px; color: #444;">Existing Products</h4>
+    <input id="search" placeholder="Search product..." onkeyup="searchInventory()">
 
-  <ul id="inventoryList"></ul>
+    <div style="overflow-x: auto; margin-top: 15px;">
+      <table style="width: 100%; border-collapse: collapse; text-align: center;">
+        <thead style="background: #6b3fa0; color: white;">
+          <tr>
+            <th style="padding: 12px; border-bottom: 1px solid #eee;">Product</th>
+            <th style="padding: 12px; border-bottom: 1px solid #eee;">Price (₹)</th>
+            <th style="padding: 12px; border-bottom: 1px solid #eee;">Stock</th>
+            <th style="padding: 12px; border-bottom: 1px solid #eee;">Sold To</th>
+            <th style="padding: 12px; border-bottom: 1px solid #eee;">Qty</th>
+            <th style="padding: 12px; border-bottom: 1px solid #eee;">Cash / Credit</th>
+            <th style="padding: 12px; border-bottom: 1px solid #eee;">Remove</th>
+          </tr>
+        </thead>
+        <tbody id="inventoryList"></tbody>
+      </table>
+    </div>
+  </div>
 </section>
 
 <section>
