@@ -132,15 +132,15 @@ function renderInventory(products) {
         </td>
 
         <td>
-          <label class="switch">
-            <input type="checkbox" id="pay-${p.id}">
-            <span class="slider"></span>
-          </label>
+          <select id="pay-${p.id}" style="padding: 6px; border-radius: 6px; border: 1px solid #ccc; cursor: pointer; margin-right: 5px;">
+            <option value="cash">💵 Cash</option>
+            <option value="credit">📝 Credit</option>
+          </select>
           <button onclick="sellProduct('${p.id}', ${p.stock})">Sell</button>
         </td>
 
         <td>
-          <button onclick="deleteProduct('${p.id}')">Remove</button>
+          <button onclick="deleteProduct('${p.id}')" style="background: #dc3545;">Remove</button>
         </td>
       </tr>`;
   });
@@ -187,7 +187,7 @@ window.sellProduct = async (id, stock) => {
 
   if (qty > stock) return alert("Not enough stock available");
 
-  const paymentType = document.getElementById("pay-" + id).checked ? "credit" : "cash";
+  const paymentType = document.getElementById("pay-" + id).value;
 
   const row = document.getElementById("qty-" + id).closest("tr");
   const productName = row.children[0].innerText;
@@ -222,6 +222,7 @@ window.sellProduct = async (id, stock) => {
 ========================= */
 
 const billingTable = document.getElementById("billingTable");
+const paidBillsTable = document.getElementById("paidBillsTable");
 
 if (billingTable) {
 
@@ -235,56 +236,80 @@ if (billingTable) {
       onSnapshot(ledgerRef, ledgerSnap => {
 
         let total = 0;
-      ledgerSnap.forEach(l => {
+        let hasEntries = false;
 
-        const data = l.data();
+        ledgerSnap.forEach(l => {
 
-        if (data.status === "closed") return;
+          const data = l.data();
 
-        if (data.paymentType === "credit") {
-          total += data.amount;
-        }
+          if (data.status === "closed") return;
 
-        if (data.paymentType === "advance") {
-          total -= data.amount;
-        }
+          if (data.paymentType === "credit") {
+            total += data.amount;
+            hasEntries = true;
+          }
 
-      });
+          if (data.paymentType === "advance") {
+            total -= data.amount;
+            hasEntries = true;
+          }
 
+        });
 
         const rowId = "row-" + cDoc.id;
+        const paidRowId = "paid-row-" + cDoc.id;
         const oldRow = document.getElementById(rowId);
+        const oldPaidRow = document.getElementById(paidRowId);
 
-        // 🔥 REMOVE ROW IF TOTAL 0
+        // 🔥 Customer is cleared or has advance balance
         if (total <= 0) {
+          // Remove from outstanding table
           if (oldRow) oldRow.remove();
+
+          // Add to paid bills table if they have ledger entries
+          if (hasEntries && paidBillsTable) {
+            const statusText = total === 0
+              ? "✅ Cleared"
+              : "✅ Cleared (Advance: ₹ " + Math.abs(total) + ")";
+
+            const paidHtml = `
+              <tr id="${paidRowId}" style="background-color:#e6ffe6;">
+                <td>${cust.name}</td>
+                <td>${statusText}</td>
+                <td>
+                  <button onclick="showCustomerLedger('${cDoc.id}','${cust.name}')">
+                    Details
+                  </button>
+                </td>
+              </tr>`;
+
+            if (oldPaidRow) {
+              oldPaidRow.outerHTML = paidHtml;
+            } else {
+              paidBillsTable.innerHTML += paidHtml;
+            }
+          }
           return;
         }
 
-        // const html = `
-        //   <tr id="${rowId}">
-        //     <td>${cust.name}</td>
-        //     <td>₹ ${total}</td>
-        //     <td>
-        //       <button onclick="showCustomerLedger('${cDoc.id}','${cust.name}')">
-        //         Details
-        //       </button>
-        //     </td>
-        //   </tr>`;
-        const highlightStyle = total > 500 
-      ? 'style="background-color:#ffe5e5;color:#b30000;font-weight:bold;"' 
-      : '';
+        // 🔥 Customer has outstanding balance — show in outstanding table
+        // Remove from paid table if they reappear with outstanding
+        if (oldPaidRow) oldPaidRow.remove();
 
-    const html = `
-      <tr id="${rowId}" ${highlightStyle}>
-        <td>${cust.name}</td>
-        <td>₹ ${total}</td>
-        <td>
-          <button onclick="showCustomerLedger('${cDoc.id}','${cust.name}')">
-            Details
-          </button>
-        </td>
-      </tr>`;
+        const highlightStyle = total > 500 
+          ? 'style="background-color:#ffe5e5;color:#b30000;font-weight:bold;"' 
+          : '';
+
+        const html = `
+          <tr id="${rowId}" ${highlightStyle}>
+            <td>${cust.name}</td>
+            <td>₹ ${total}</td>
+            <td>
+              <button onclick="showCustomerLedger('${cDoc.id}','${cust.name}')">
+                Details
+              </button>
+            </td>
+          </tr>`;
 
         if (oldRow) {
           oldRow.outerHTML = html;
@@ -1017,93 +1042,178 @@ window.generatePDF = function () {
 
 let currentBillTotal = 0;
 let previousBalance = 0;
+let advanceCurrent = 0;
+
 currentLedgerData.sort((a, b) => a.rawDate.seconds - b.rawDate.seconds);
-let lastAdvanceIndex = -1;
 
-currentLedgerData.forEach((item, index) => {
-  if (item.type === "advance") {
-    lastAdvanceIndex = index;
+// Determine the "Current Date" as the date of the most recent transaction
+const currentBillDate = currentLedgerData.length > 0 
+  ? currentLedgerData[currentLedgerData.length - 1].date 
+  : new Date().toLocaleDateString("en-GB");
+
+currentLedgerData.forEach((item) => {
+  // If transaction is from a previous date, accumulate as Previous Balance
+  if (item.date !== currentBillDate) {
+    if (item.type === "credit") previousBalance += item.amount;
+    if (item.type === "advance") previousBalance -= item.amount;
+  } else {
+    // If transaction is from the current billing date
+    if (item.type === "credit") {
+      currentBillTotal += item.amount;
+
+      const rate = item.amount / item.qty;
+
+      doc.text(item.date, 12, y);
+      doc.text(item.product.substring(0, 25), 40, y);
+      doc.text(String(item.qty), 120, y);
+      doc.text("Rs " + rate.toFixed(2), 140, y);
+      doc.text("Rs " + item.amount.toFixed(2), 165, y);
+
+      y += 8;
+    }
+    
+    if (item.type === "advance") {
+      advanceCurrent += item.amount;
+    }
   }
 });
 
-// Calculate previous balance (debt positive, advance negative)
-currentLedgerData.slice(0, lastAdvanceIndex + 1).forEach((item) => {
-  if (item.type === "credit") previousBalance += item.amount;
-  if (item.type === "advance") previousBalance -= item.amount;
-});
+const netBalance = previousBalance + currentBillTotal - advanceCurrent;
 
-currentLedgerData
-  .slice(lastAdvanceIndex + 1)
-  .forEach((item) => {
-
-  if (item.type === "credit") {
-
-    currentBillTotal += item.amount;
-
-    const rate = item.amount / item.qty;
-
-    doc.text(item.date, 12, y);
-    doc.text(item.product.substring(0, 25), 40, y);
-    doc.text(String(item.qty), 120, y);
-    doc.text("Rs " + rate.toFixed(2), 140, y);
-    doc.text("Rs " + item.amount.toFixed(2), 165, y);
-
-    y += 8;
-  }
-
-});
-
-const netBalance = previousBalance + currentBillTotal;
-
-  y += 10;
-
-  // 🔷 TRANSPARENT TOTAL SECTION
-  doc.line(110, y - 5, 195, y - 5);
-
+y += 10;
+doc.line(110, y - 5, 195, y - 5);
 doc.setFontSize(11);
 
-doc.text("Current Bill:", 120, y);
-doc.text("Rs " + currentBillTotal.toFixed(2), 165, y);
-
-y += 8;
-
 if (previousBalance > 0) {
-  doc.text("Previous Debt:", 120, y);
+  doc.text("Credit :", 120, y);
   doc.text("Rs " + previousBalance.toFixed(2), 165, y);
   y += 8;
 } else if (previousBalance < 0) {
-  doc.text("Advance Balance Used:", 120, y);
+  doc.text("Previous Advance Used:", 120, y);
   doc.text("Rs -" + Math.abs(previousBalance).toFixed(2), 165, y);
   y += 8;
 }
 
-doc.line(120, y - 2, 195, y - 2);
-
+doc.text("Current Bill Total:", 120, y);
+doc.text("Rs " + currentBillTotal.toFixed(2), 165, y);
 y += 8;
 
+if (advanceCurrent > 0) {
+  doc.text("Advance :", 120, y);
+  doc.text("Rs -" + advanceCurrent.toFixed(2), 165, y);
+  y += 8;
+}
+
+doc.line(120, y - 2, 195, y - 2);
+y += 8;
 doc.setFontSize(13);
 
 if (netBalance > 0) {
   doc.text("Net Outstanding:", 120, y);
   doc.text("Rs " + netBalance.toFixed(2), 165, y);
 } else if (netBalance < 0) {
-  doc.text("Advance Balance:", 120, y);
+  doc.text("Advance Balance Available:", 120, y);
   doc.text("Rs " + Math.abs(netBalance).toFixed(2), 165, y);
 } else {
   doc.text("Status:", 120, y);
   doc.text("Fully Settled", 165, y);
 }
-  y += 20;
 
-  // 🔷 FOOTER
+y += 20;
+// 🔷 FOOTER
+doc.setFillColor(43, 104, 126);
+doc.rect(0, 280, 210, 15, "F");
+
+doc.setTextColor(255, 255, 255);
+doc.setFontSize(10);
+doc.text("Thank you for your business!", 70, 290);
+
+doc.save(currentCustomerName + "_Invoice.pdf");
+};
+
+window.generateFullLedgerPDF = function () {
+  if (!currentLedgerData || currentLedgerData.length === 0) {
+    alert("No data available to generate Ledger.");
+    return;
+  }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  let y = 20;
+
+  // Header
   doc.setFillColor(43, 104, 126);
-  doc.rect(0, 280, 210, 15, "F");
-
+  doc.rect(0, 0, 210, 30, "F");
   doc.setTextColor(255, 255, 255);
-  doc.setFontSize(10);
-  doc.text("Thank you for your business!", 70, 290);
+  doc.setFontSize(22);
+  doc.text("FULL CUSTOMER LEDGER", 15, 20);
+  doc.setFontSize(12);
+  doc.text("Gulati Traders", 150, 15);
+  doc.text("Shiamgir", 150, 20);
+  doc.setTextColor(0, 0, 0);
 
-  doc.save(currentCustomerName + "_Invoice.pdf");
+  y = 40;
+  doc.setFontSize(12);
+  doc.text("Ledger For: " + currentCustomerName, 15, y);
+  doc.text("Date: " + new Date().toLocaleDateString("en-GB"), 150, y);
+  
+  y += 15;
+  
+  // Table Header
+  doc.setFillColor(230, 230, 230);
+  doc.rect(10, y - 5, 190, 8, "F");
+  doc.setFontSize(11);
+  doc.text("Date", 12, y);
+  doc.text("Item / Description", 40, y);
+  doc.text("Type", 110, y);
+  doc.text("Qty", 140, y);
+  doc.text("Amount", 165, y);
+  y += 10;
+
+  let totalOutstanding = 0;
+  
+  currentLedgerData.sort((a, b) => a.rawDate.seconds - b.rawDate.seconds);
+  currentLedgerData.forEach((item) => {
+    doc.text(item.date, 12, y);
+    doc.text(item.product.substring(0, 25), 40, y);
+
+    if (item.type === "credit") {
+      doc.text("Purchase", 110, y);
+      doc.text(String(item.qty), 140, y);
+      doc.text("Rs " + item.amount.toFixed(2), 165, y);
+      totalOutstanding += item.amount;
+    } else {
+      doc.text("Payment", 110, y);
+      doc.text("-", 140, y);
+      doc.setTextColor(0, 128, 0);
+      doc.text("Rs -" + item.amount.toFixed(2), 165, y);
+      doc.setTextColor(0, 0, 0);
+      totalOutstanding -= item.amount;
+    }
+    y += 8;
+
+    // Handle page breaks
+    if (y > 270) {
+      doc.addPage();
+      y = 20;
+    }
+  });
+
+  y += 10;
+  doc.line(110, y - 5, 195, y - 5);
+  doc.setFontSize(13);
+  
+  if (totalOutstanding > 0) {
+    doc.text("Net Outstanding:", 120, y);
+    doc.text("Rs " + totalOutstanding.toFixed(2), 165, y);
+  } else if (totalOutstanding < 0) {
+    doc.text("Net Advance Balance:", 120, y);
+    doc.text("Rs " + Math.abs(totalOutstanding).toFixed(2), 165, y);
+  } else {
+    doc.text("Status:", 120, y);
+    doc.text("Fully Settled", 165, y);
+  }
+
+  doc.save(currentCustomerName + "_Full_Ledger.pdf");
 };
 
 // window.addPayment = async function () {
