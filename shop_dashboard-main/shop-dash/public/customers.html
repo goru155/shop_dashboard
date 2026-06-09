@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Customers</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="nav.css">
+
+  <style>
+    .card{
+      background:white;
+      padding:25px;
+      border-radius:10px;
+      max-width:700px;
+      margin:40px auto;
+      box-shadow:0 4px 10px rgba(0,0,0,0.08);
+    }
+
+    h2{
+      margin-bottom:20px;
+      color:#6b3fa0;
+    }
+
+    input{
+      padding:10px;
+      width:65%;
+      border:1px solid #ddd;
+      border-radius:20px;
+      outline:none;
+    }
+
+    button{
+      background:#6b3fa0;
+      color:white;
+      border:none;
+      padding:9px 18px;
+      border-radius:20px;
+      cursor:pointer;
+      margin-left:8px;
+    }
+
+    button:hover{
+      opacity:.9;
+    }
+
+    .table-container {
+      max-height: 450px;
+      overflow-y: auto;
+      border: 1px solid #ddd;
+      margin-top: 20px;
+      border-radius: 8px;
+      width: 100%;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+    }
+
+    th, td {
+      padding: 12px;
+      border-bottom: 1px solid #eee;
+      text-align: center;
+    }
+
+    th {
+      background: #6b3fa0;
+      color: white;
+      position: sticky;
+      top: 0;
+    }
+
+    tr:nth-child(even){
+      background: #f9f9f9;
+    }
+
+  </style>
+</head>
+<body>
+
+<header>
+  <h3>Shop Admin</h3>
+  <nav>
+    <a href="inventory.html">Inventory</a>
+    <a href="customers.html">Customers</a>
+    <a href="billing.html">Billing</a>
+  </nav>
+</header>
+
+<section class="card">
+  <h2>Customer Management</h2>
+
+  <div>
+    <input id="cname" placeholder="Enter customer name">
+    <button onclick="addCustomer()">Add Customer</button>
+  </div>
+
+  <div class="table-container">
+    <table>
+      <thead>
+        <tr>
+          <th>Customer Name</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="customersTable">
+        <!-- Customers will appear here -->
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<script type="module" src="app.js"></script>
+
+</body>
+</html>
