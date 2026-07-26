@@ -483,35 +483,38 @@ window.showCustomerLedger = async (custId, custName) => {
 
     let rowsHTML = "";
 
+    // Collect all active entries first
+    const allEntries = [];
     snap.forEach(d => {
-
       const r = d.data();
-      const id = d.id;
-
       if (r.status === "closed") return;
-      
+      allEntries.push({ id: d.id, data: r });
+    });
+
+    // Sort by date (oldest first)
+    allEntries.sort((a, b) => {
+      const aTime = a.data.date?.seconds ?? 0;
+      const bTime = b.data.date?.seconds ?? 0;
+      return bTime - aTime;
+    });
+
+    // Build data arrays and HTML from sorted entries
+    allEntries.forEach(({ id, data: r }) => {
+
       const formattedDate = new Date(r.date.seconds * 1000)
         .toLocaleDateString("en-GB");
 
       currentLedgerDocIds.push(id);
 
-      // currentLedgerData.push({
-      //   id,
-      //   date: formattedDate,
-      //   product: r.product,
-      //   qty: r.qty,
-      //   amount: r.amount,
-      //   type: r.paymentType
-      // });
       currentLedgerData.push({
         id,
-        rawDate: r.date,   // 🔥 important
+        rawDate: r.date,
         date: formattedDate,
         product: r.product,
         qty: r.qty,
         amount: r.amount,
         type: r.paymentType
-      });      
+      });
 
       rowsHTML += `
         <tr data-type="${r.paymentType}">
@@ -546,18 +549,14 @@ window.showCustomerLedger = async (custId, custName) => {
     // #endregion
 
     const net = breakdown.netOutstanding;
-    const netLabel = net > 0
-      ? `Net Outstanding: ₹ ${net.toFixed(2)}`
-      : net < 0
-        ? `Advance Balance: ₹ ${Math.abs(net).toFixed(2)}`
-        : "Fully Settled";
+    const adjustedBill = net > 0 ? net : 0;
+    const advanceBalance = net < 0 ? Math.abs(net) : 0;
 
     const summaryHTML = `
-      <tr style="background:#f3eef8;font-weight:bold;">
-        <td colspan="2">Current Bill: ₹ ${breakdown.currentCharges.toFixed(2)}</td>
-        <td colspan="2">Advance: ₹ ${breakdown.advanceApplied.toFixed(2)}</td>
-        <td colspan="2">${netLabel}</td>
-      </tr>`;
+        <tr style="background:#f3eef8;font-weight:bold;">
+          <td colspan="3">Current Bill: ₹ ${adjustedBill.toFixed(2)}</td>
+          <td colspan="3">Advance Balance: ₹ ${advanceBalance.toFixed(2)}</td>
+        </tr>`;
 
     document.getElementById("ledgerBody").innerHTML = summaryHTML + rowsHTML;
 
@@ -1159,16 +1158,6 @@ y += 10;
 doc.line(110, y - 5, 195, y - 5);
 doc.setFontSize(11);
 
-if (previousBalance > 0) {
-  doc.text("Credit :", 120, y);
-  doc.text("Rs " + previousBalance.toFixed(2), 165, y);
-  y += 8;
-} else if (previousBalance < 0) {
-  doc.text("Previous Advance Used:", 120, y);
-  doc.text("Rs -" + Math.abs(previousBalance).toFixed(2), 165, y);
-  y += 8;
-}
-
 doc.text("Current Bill Total:", 120, y);
 doc.text("Rs " + currentBillTotal.toFixed(2), 165, y);
 y += 8;
@@ -1183,16 +1172,15 @@ doc.line(120, y - 2, 195, y - 2);
 y += 8;
 doc.setFontSize(13);
 
-if (netBalance > 0) {
-  doc.text("Net Outstanding:", 120, y);
-  doc.text("Rs " + netBalance.toFixed(2), 165, y);
-} else if (netBalance < 0) {
-  doc.text("Advance Balance Available:", 120, y);
-  doc.text("Rs " + Math.abs(netBalance).toFixed(2), 165, y);
-} else {
-  doc.text("Status:", 120, y);
-  doc.text("Fully Settled", 165, y);
-}
+const adjustedBillPdf = netBalance > 0 ? netBalance : 0;
+const advanceBalancePdf = netBalance < 0 ? Math.abs(netBalance) : 0;
+
+doc.text("Current Bill:", 120, y);
+doc.text("Rs " + adjustedBillPdf.toFixed(2), 165, y);
+y += 8;
+
+doc.text("Advance Balance:", 120, y);
+doc.text("Rs " + advanceBalancePdf.toFixed(2), 165, y);
 
 y += 20;
 // 🔷 FOOTER
@@ -1277,16 +1265,15 @@ window.generateFullLedgerPDF = function () {
   doc.line(110, y - 5, 195, y - 5);
   doc.setFontSize(13);
   
-  if (totalOutstanding > 0) {
-    doc.text("Net Outstanding:", 120, y);
-    doc.text("Rs " + totalOutstanding.toFixed(2), 165, y);
-  } else if (totalOutstanding < 0) {
-    doc.text("Net Advance Balance:", 120, y);
-    doc.text("Rs " + Math.abs(totalOutstanding).toFixed(2), 165, y);
-  } else {
-    doc.text("Status:", 120, y);
-    doc.text("Fully Settled", 165, y);
-  }
+  const adjustedBillLedger = totalOutstanding > 0 ? totalOutstanding : 0;
+  const advanceBalanceLedger = totalOutstanding < 0 ? Math.abs(totalOutstanding) : 0;
+
+  doc.text("Current Bill:", 120, y);
+  doc.text("Rs " + adjustedBillLedger.toFixed(2), 165, y);
+  y += 8;
+
+  doc.text("Advance Balance:", 120, y);
+  doc.text("Rs " + advanceBalanceLedger.toFixed(2), 165, y);
 
   doc.save(currentCustomerName + "_Full_Ledger.pdf");
 };
