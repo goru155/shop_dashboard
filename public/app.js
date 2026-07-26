@@ -4,7 +4,7 @@ import {
   updateDoc, deleteDoc, getDoc, getDocs
 } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js";
 import {
-  getAuth, signInWithEmailAndPassword
+  getAuth, signInWithEmailAndPassword, signOut
 } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-auth.js";
 
 /* FIREBASE CONFIG */
@@ -24,6 +24,17 @@ window.login = () => {
   signInWithEmailAndPassword(auth, "admin@shop.com", "admin@123")
     .then(() => location.href = "inventory.html")
     .catch(err => alert(err.message));
+};
+
+/* LOGOUT */
+window.logout = () => {
+  signOut(auth)
+    .then(() => {
+      location.href = "login.html";
+    })
+    .catch((err) => {
+      alert("Logout failed: " + err.message);
+    });
 };
 
 /* CUSTOMER CACHE */
