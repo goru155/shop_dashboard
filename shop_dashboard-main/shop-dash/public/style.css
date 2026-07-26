@@ -1,0 +1,30 @@
+.card {
+  background: white;
+  margin: 30px;
+  padding: 25px;
+  border-radius: 10px;
+}
+
+.row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 15px;
+  flex-wrap: wrap;   /* NEW: responsive layout */
+}
+
+input, select {
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  min-width: 160px;  /* NEW: better spacing */
+}
+
+/* NEW: stepper buttons look clean */
+.qtyStepper button {
+  padding: 6px 10px;
+  border: none;
+  background: #6b3fa0;
+  color: white;
+  border-radius: 4px;
+  cursor: pointer;
+}
