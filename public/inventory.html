@@ -55,7 +55,15 @@ header nav a:hover {
   margin-top: 20px;
 }
 
-/* ================= SEARCH ================= */
+/* ================= SEARCH & FILTER ================= */
+
+.filter-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 15px;
+  align-items: center;
+}
 
 #productSearch {
   padding: 8px 12px;
@@ -63,7 +71,14 @@ header nav a:hover {
   max-width: 300px;
   border: 1px solid #ccc;
   border-radius: 8px;
-  margin-bottom: 15px;
+}
+
+.row select,
+.row input {
+  flex: 1 1 180px;
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
 }
 
 /* ================= INPUT ROW ================= */
@@ -99,7 +114,6 @@ header nav a:hover {
 
 table {
   width: 100%;
-  min-width: 950px;
   border-collapse: collapse;
   background: white;
 }
@@ -116,6 +130,31 @@ th {
   color: white;
   position: sticky;
   top: 0;
+}
+
+tr.low-stock-row {
+  background: #fff5f5;
+}
+
+tr.low-stock-row:hover {
+  background: #ffecec;
+}
+
+.low-stock-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #dc3545;
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+.low-stock-cell .stock-value {
+  font-weight: 700;
+  color: #b30000;
 }
 
 tr:hover {
@@ -261,11 +300,13 @@ button:hover {
 <section class="card">
   <h2>Inventory Management</h2>
 
-  <input 
-    type="text" 
-    id="productSearch" 
-    placeholder="🔍 Search product..."
-  >
+  <div class="filter-toolbar">
+    <input
+      type="text"
+      id="productSearch"
+      placeholder="🔍 Search product..."
+    >
+  </div>
 
   <div class="row">
     <input id="pname" placeholder="Product name">
@@ -281,6 +322,7 @@ button:hover {
           <th>Product</th>
           <th>Price (₹)</th>
           <th>Stock</th>
+          <th>Restock</th>
           <th>Sold To</th>
           <th>Qty</th>
           <th>Cash / Credit</th>

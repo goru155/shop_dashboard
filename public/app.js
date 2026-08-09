@@ -11,7 +11,7 @@ import {
 const firebaseConfig = {
   apiKey: "AIzaSyAawUopX1lromd5nFeMPoogEXFzLZ7ZnXM",
   authDomain: "shopportal-f6630.firebaseapp.com",
-  projectId: "shopportal-f6630"
+  projectId: "shopportal-f6630" 
 };
 
 const app = initializeApp(firebaseConfig);
@@ -78,7 +78,8 @@ window.addProduct = async () => {
   await addDoc(collection(db, "inventory"), {
     name: pname.value,
     price: Number(pprice.value),
-    stock: Number(pstock.value)
+    stock: Number(pstock.value),
+    lowStockThreshold: 5
   });
 };
 
@@ -91,65 +92,87 @@ const productSearchInput = document.getElementById("productSearch");
 
 let inventoryCache = [];
 
-if (inventoryList) {
+function normalizeProduct(data) {
+  return {
+    ...data,
+    lowStockThreshold: data.lowStockThreshold ?? 5
+  };
+}
 
-  onSnapshot(collection(db, "inventory"), snap => {
+function getInventoryProduct(id) {
+  return inventoryCache.find(p => p.id === id);
+}
 
-    inventoryCache = [];
-    snap.forEach(d => {
-      inventoryCache.push({ id: d.id, ...d.data() });
-    });
+function applyInventoryView() {
+  let products = [...inventoryCache];
 
-    renderInventory(inventoryCache);
+  const term = productSearchInput?.value.toLowerCase().trim() || "";
+  if (term) {
+    products = products.filter(p => p.name.toLowerCase().includes(term));
+  }
+
+  renderInventory(products);
+}
+
+window.restockProduct = async (id, currentStock) => {
+  const amountStr = prompt("Enter amount to restock:");
+  if (!amountStr) return;
+
+  const amount = parseInt(amountStr);
+  if (isNaN(amount) || amount <= 0) {
+    alert("Invalid amount");
+    return;
+  }
+
+  await updateDoc(doc(db, "inventory", id), {
+    stock: currentStock + amount
   });
+};
 
-  productSearchInput?.addEventListener("input", () => {
-    const term = productSearchInput.value.toLowerCase();
+function renderSellControls(p) {
+  return `
+    <td style="position:relative">
+      <input type="text"
+        class="custSearch"
+        data-row="${p.id}"
+        oninput="showCustomerSuggestions(this)">
+      <div id="suggest-${p.id}"></div>
+    </td>
 
-    const filtered = inventoryCache.filter(p =>
-      p.name.toLowerCase().includes(term)
-    );
+    <td>
+      <div class="qtyStepper">
+        <button onclick="stepQty('${p.id}',-1)">−</button>
+        <input id="qty-${p.id}" value="1">
+        <button onclick="stepQty('${p.id}',1)">+</button>
+      </div>
+    </td>
 
-    renderInventory(filtered);
-  });
+    <td>
+      <select id="pay-${p.id}" style="padding: 6px; border-radius: 6px; border: 1px solid #ccc; cursor: pointer; margin-right: 5px;">
+        <option value="cash">💵 Cash</option>
+        <option value="credit">📝 Credit</option>
+      </select>
+      <button onclick="sellProduct('${p.id}', ${p.stock})">Sell</button>
+    </td>`;
 }
 
 function renderInventory(products) {
+  if (!inventoryList) return;
 
   let html = "";
 
   products.forEach(p => {
+    const threshold = p.lowStockThreshold ?? 5;
+    const isLowStock = Number(p.stock) <= threshold;
+    const rowClass = isLowStock ? "low-stock-row" : "";
 
     html += `
-      <tr>
-        <td>${p.name}</td>
+      <tr class="${rowClass}" data-product-id="${p.id}">
+        <td>${p.name}${isLowStock ? ` <span class="low-stock-badge">Low</span>` : ""}</td>
         <td>${p.price}</td>
-        <td>${p.stock}</td>
-
-        <td style="position:relative">
-          <input type="text"
-            class="custSearch"
-            data-row="${p.id}"
-            oninput="showCustomerSuggestions(this)">
-          <div id="suggest-${p.id}"></div>
-        </td>
-
-        <td>
-          <div class="qtyStepper">
-            <button onclick="stepQty('${p.id}',-1)">−</button>
-            <input id="qty-${p.id}" value="1">
-            <button onclick="stepQty('${p.id}',1)">+</button>
-          </div>
-        </td>
-
-        <td>
-          <select id="pay-${p.id}" style="padding: 6px; border-radius: 6px; border: 1px solid #ccc; cursor: pointer; margin-right: 5px;">
-            <option value="cash">💵 Cash</option>
-            <option value="credit">📝 Credit</option>
-          </select>
-          <button onclick="sellProduct('${p.id}', ${p.stock})">Sell</button>
-        </td>
-
+        <td class="${isLowStock ? "low-stock-cell" : ""}"><span class="stock-value">${p.stock}</span></td>
+        <td><button onclick="restockProduct('${p.id}', ${p.stock})" style="background: #28a745; padding: 4px 8px; font-size: 0.85rem; border-radius: 4px;">Restock</button></td>
+        ${renderSellControls(p)}
         <td>
           <button onclick="deleteProduct('${p.id}')" style="background: #dc3545;">Remove</button>
         </td>
@@ -157,6 +180,18 @@ function renderInventory(products) {
   });
 
   inventoryList.innerHTML = html;
+}
+
+if (inventoryList) {
+  onSnapshot(collection(db, "inventory"), snap => {
+    inventoryCache = [];
+    snap.forEach(d => {
+      inventoryCache.push({ id: d.id, ...normalizeProduct(d.data()) });
+    });
+    applyInventoryView();
+  });
+
+  productSearchInput?.addEventListener("input", applyInventoryView);
 }
 
 /* SELL PRODUCT */
@@ -200,9 +235,8 @@ window.sellProduct = async (id, stock) => {
 
   const paymentType = document.getElementById("pay-" + id).value;
 
-  const row = document.getElementById("qty-" + id).closest("tr");
-  const productName = row.children[0].innerText;
-  const price = Number(row.children[1].innerText);
+  const productName = product?.name || "";
+  const price = Number(product?.price || 0);
 
   const itemTotal = qty * price;
 
