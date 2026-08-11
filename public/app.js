@@ -221,6 +221,14 @@ if (inventoryList) {
 //     date: new Date()
 //   });
 // };
+window.stepQty = (id, delta) => {
+  const el = document.getElementById("qty-" + id);
+  if (el) {
+    const val = Math.max(1, (parseInt(el.value) || 1) + delta);
+    el.value = val;
+  }
+};
+
 window.sellProduct = async (id, stock) => {
 
   const qty = Number(document.getElementById("qty-" + id).value);
@@ -235,8 +243,9 @@ window.sellProduct = async (id, stock) => {
 
   const paymentType = document.getElementById("pay-" + id).value;
 
-  const productName = product?.name || "";
-  const price = Number(product?.price || 0);
+  const row = document.getElementById("qty-" + id).closest("tr");
+  const productName = row.children[0].innerText;
+  const price = Number(row.children[1].innerText);
 
   const itemTotal = qty * price;
 
@@ -245,10 +254,7 @@ window.sellProduct = async (id, stock) => {
     stock: stock - qty
   });
 
-  // 🔥 If cash sale → no ledger entry
-  if (paymentType === "cash") return;
-
-  // 🔥 Credit sale → simple ledger entry
+  // 🔥 Record ledger entry for both cash and credit sales
   const ledgerRef = collection(db, "customers", customerId, "ledger");
 
   await addDoc(ledgerRef, {
@@ -256,7 +262,7 @@ window.sellProduct = async (id, stock) => {
     product: productName,
     qty: qty,
     amount: itemTotal,
-    paymentType: "credit",
+    paymentType: paymentType, // "cash" or "credit"
     date: new Date(),
     status: "active"
   });
