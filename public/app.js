@@ -1,17 +1,23 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
 import {
   getFirestore, collection, addDoc, onSnapshot, doc,
-  updateDoc, deleteDoc, getDoc, getDocs
+  updateDoc, deleteDoc, getDoc, getDocs, runTransaction
 } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js";
 import {
   getAuth, signInWithEmailAndPassword, signOut
 } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-auth.js";
 
 /* FIREBASE CONFIG */
+const env = typeof import.meta !== "undefined" && import.meta.env ? import.meta.env : {};
+
 const firebaseConfig = {
   apiKey: "AIzaSyAawUopX1lromd5nFeMPoogEXFzLZ7ZnXM",
   authDomain: "shopportal-f6630.firebaseapp.com",
-  projectId: "shopportal-f6630" 
+  projectId: "shopportal-f6630",
+  storageBucket: "shopportal-f6630.firebasestorage.app",
+  messagingSenderId: "843668522089",
+  appId: "1:843668522089:web:cfdd7548303ced6df04ef8",
+  measurementId: "G-3P0EWBDSLW"
 };
 
 const app = initializeApp(firebaseConfig);
@@ -40,10 +46,31 @@ window.logout = () => {
 /* CUSTOMER CACHE */
 window._customersCache = [];
 
+async function getCustomerProfileByEmail(email) {
+  const targetEmail = String(email || '').trim().toLowerCase();
+  if (!targetEmail) return null;
+
+  try {
+    const snapshot = await getDocs(collection(db, "customers"));
+    const match = snapshot.docs.find(docSnap => {
+      const data = docSnap.data() || {};
+      const savedEmail = String(data.email || '').trim().toLowerCase();
+      const savedContact = String(data.contact || '').trim().toLowerCase();
+      return savedEmail === targetEmail || savedContact === targetEmail;
+    });
+
+    return match ? match.data() : null;
+  } catch (error) {
+    console.warn("Customer profile lookup failed:", error);
+    return null;
+  }
+}
+
 onSnapshot(collection(db, "customers"), snap => {
   window._customersCache = [];
   snap.forEach(d => {
-    window._customersCache.push({ id: d.id, name: d.data().name });
+    const data = d.data() || {};
+    window._customersCache.push({ id: d.id, name: data.name || data.email || 'Customer' });
   });
 });
 
@@ -73,28 +100,157 @@ window.selectCustomer = function (rowId, custId, custName) {
   document.getElementById("suggest-" + rowId).innerHTML = "";
 };
 
+/* CATEGORY MANAGEMENT & REALTIME LISTENERS */
+window.categoriesCache = ["General"];
+
+onSnapshot(collection(db, "categories"), snap => {
+  const cats = new Set(["General"]);
+  snap.forEach(d => {
+    if (d.data().name) cats.add(d.data().name);
+  });
+  window.categoriesCache = Array.from(cats);
+  updateCategoryDropdowns();
+  if (typeof applyInventoryView === "function") {
+    applyInventoryView();
+  }
+});
+
+window.addCategory = async () => {
+  const catInput = document.getElementById("newCatName");
+  const catName = catInput?.value.trim();
+  if (!catName) return alert("Please enter a category name");
+  try {
+    await addDoc(collection(db, "categories"), {
+      name: catName,
+      createdAt: new Date()
+    });
+    catInput.value = "";
+  } catch (err) {
+    alert("Error adding category: " + err.message);
+  }
+};
+
+function updateCategoryDropdowns() {
+  const pcategorySelect = document.getElementById("pcategory");
+  const categoryFilterSelect = document.getElementById("categoryFilter");
+
+  if (pcategorySelect) {
+    const currVal = pcategorySelect.value;
+    pcategorySelect.innerHTML = window.categoriesCache.map(c => `<option value="${c}">${c}</option>`).join("");
+    if (window.categoriesCache.includes(currVal)) pcategorySelect.value = currVal;
+  }
+
+  if (categoryFilterSelect) {
+    const currVal = categoryFilterSelect.value;
+    categoryFilterSelect.innerHTML = `<option value="all">All Categories</option>` +
+      window.categoriesCache.map(c => `<option value="${c}">${c}</option>`).join("");
+    if (currVal && [...categoryFilterSelect.options].some(o => o.value === currVal)) {
+      categoryFilterSelect.value = currVal;
+    }
+  }
+}
+
 /* ADD PRODUCT */
 window.addProduct = async () => {
-  await addDoc(collection(db, "inventory"), {
-    name: pname.value,
-    price: Number(pprice.value),
-    stock: Number(pstock.value),
-    lowStockThreshold: 5
-  });
+  const pnameEl = document.getElementById("pname");
+  const ppriceEl = document.getElementById("pprice");
+  const pstockEl = document.getElementById("pstock");
+  const pcatEl = document.getElementById("pcategory");
+
+  const name = pnameEl?.value.trim();
+  const pcat = pcatEl?.value || "General";
+  const price = Number(ppriceEl?.value) || 0;
+  const stock = Number(pstockEl?.value) || 0;
+
+  if (!name) return alert("Please enter product name");
+  try {
+    await addDoc(collection(db, "inventory"), {
+      name: name,
+      category: pcat,
+      price: price,
+      stock: stock,
+      isVisible: true,
+      lowStockThreshold: 5,
+      createdAt: new Date()
+    });
+    if (pnameEl) pnameEl.value = "";
+    if (ppriceEl) ppriceEl.value = "";
+    if (pstockEl) pstockEl.value = "";
+  } catch (err) {
+    alert("Error adding product: " + err.message);
+  }
+};
+
+/* SEED SAMPLE CATALOG */
+window.seedSampleCatalog = async () => {
+  const defaultItems = [
+    { name: "Organic Red Bell Pepper (Capsicum)", category: "vegetables", price: 24, stock: 18, isVisible: true, lowStockThreshold: 5 },
+    { name: "Pure Green Tea with Citrus Lemon", category: "beverages", price: 18.5, stock: 25, isVisible: true, lowStockThreshold: 5 },
+    { name: "South African Meyer Yellow Lemons", category: "fruits", price: 12, stock: 14, isVisible: true, lowStockThreshold: 5 },
+    { name: "Hass Fresh Creamy Avocados", category: "fruits", price: 16, stock: 9, isVisible: true, lowStockThreshold: 5 },
+    { name: "Farm Fresh Free-Range Brown Eggs", category: "eggs", price: 9.5, stock: 30, isVisible: true, lowStockThreshold: 5 },
+    { name: "Artisanal Sourdough Country Loaf", category: "baking", price: 8.5, stock: 6, isVisible: true, lowStockThreshold: 5 },
+    { name: "Wild Alaskan Salmon Fillet", category: "seafood", price: 34, stock: 8, isVisible: true, lowStockThreshold: 5 },
+    { name: "Organic Whole Alpine Milk", category: "dairy", price: 6.2, stock: 22, isVisible: true, lowStockThreshold: 5 },
+    { name: "Dutch Aged Gouda Cheese Wedge", category: "cheese", price: 19.8, stock: 12, isVisible: true, lowStockThreshold: 5 },
+    { name: "Grass-Fed Angus Beef Ribeye", category: "meat", price: 42, stock: 5, isVisible: true, lowStockThreshold: 5 }
+  ];
+
+  try {
+    for (const item of defaultItems) {
+      await addDoc(collection(db, "inventory"), {
+        ...item,
+        createdAt: new Date()
+      });
+    }
+    const sampleCats = ["vegetables", "beverages", "fruits", "eggs", "baking", "seafood", "dairy", "cheese", "meat"];
+    for (const cat of sampleCats) {
+      await addDoc(collection(db, "categories"), { name: cat, createdAt: new Date() });
+    }
+    alert("Sample catalog seeded successfully!");
+  } catch (err) {
+    alert("Error seeding catalog: " + err.message);
+  }
+};
+
+/* TOGGLE PRODUCT VISIBILITY (SHOW / HIDE) */
+window.toggleProductVisibility = async (id, currentIsVisible) => {
+  try {
+    const nextStatus = currentIsVisible === false ? true : false;
+    await updateDoc(doc(db, "inventory", id), {
+      isVisible: nextStatus
+    });
+  } catch (err) {
+    alert("Error updating visibility: " + err.message);
+  }
+};
+
+/* UPDATE PRODUCT CATEGORY INLINE */
+window.updateProductCategory = async (id, newCategory) => {
+  try {
+    await updateDoc(doc(db, "inventory", id), {
+      category: newCategory
+    });
+  } catch (err) {
+    alert("Error updating product category: " + err.message);
+  }
 };
 
 /* =========================
-    INVENTORY REALTIME + SEARCH
+    INVENTORY REALTIME + SEARCH & FILTER
 ========================= */
 
 const inventoryList = document.getElementById("inventoryList");
 const productSearchInput = document.getElementById("productSearch");
+const categoryFilterInput = document.getElementById("categoryFilter");
 
 let inventoryCache = [];
 
 function normalizeProduct(data) {
   return {
     ...data,
+    category: data.category || "General",
+    isVisible: data.isVisible !== false,
     lowStockThreshold: data.lowStockThreshold ?? 5
   };
 }
@@ -104,11 +260,22 @@ function getInventoryProduct(id) {
 }
 
 function applyInventoryView() {
+  if (!inventoryList) return;
   let products = [...inventoryCache];
+
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get("filter") === "lowstock") {
+    products = products.filter(p => p.stock <= (p.lowStockThreshold ?? 5));
+  }
 
   const term = productSearchInput?.value.toLowerCase().trim() || "";
   if (term) {
     products = products.filter(p => p.name.toLowerCase().includes(term));
+  }
+
+  const selectedCat = categoryFilterInput?.value || "all";
+  if (selectedCat !== "all") {
+    products = products.filter(p => (p.category || "General") === selectedCat);
   }
 
   renderInventory(products);
@@ -129,11 +296,44 @@ window.restockProduct = async (id, currentStock) => {
   });
 };
 
+/* DELETE PRODUCT */
+window.deleteProduct = async (id) => {
+  if (!confirm("Are you sure you want to delete this product?")) return;
+  try {
+    await deleteDoc(doc(db, "inventory", id));
+  } catch (err) {
+    alert("Error deleting product: " + err.message);
+  }
+};
+
+/* CLEAR / DELETE COMPLETE INVENTORY */
+window.clearAllInventory = async () => {
+  const confirmDelete = confirm("⚠️ Are you sure you want to completely DELETE ALL products in your inventory?\n\nThis will remove all items from the database and cannot be undone.");
+  if (!confirmDelete) return;
+
+  try {
+    const snap = await getDocs(collection(db, "inventory"));
+    if (snap.empty) {
+      alert("Inventory is already empty.");
+      return;
+    }
+
+    const total = snap.size;
+    const deletePromises = snap.docs.map(docSnap => deleteDoc(doc(db, "inventory", docSnap.id)));
+    await Promise.all(deletePromises);
+
+    alert(`Successfully deleted all ${total} products from the inventory.`);
+  } catch (err) {
+    alert("Error deleting complete inventory: " + err.message);
+  }
+};
+
 function renderSellControls(p) {
   return `
     <td style="position:relative">
       <input type="text"
         class="custSearch"
+        placeholder="Search..."
         data-row="${p.id}"
         oninput="showCustomerSuggestions(this)">
       <div id="suggest-${p.id}"></div>
@@ -148,16 +348,33 @@ function renderSellControls(p) {
     </td>
 
     <td>
-      <select id="pay-${p.id}" style="padding: 6px; border-radius: 6px; border: 1px solid #ccc; cursor: pointer; margin-right: 5px;">
-        <option value="cash">💵 Cash</option>
-        <option value="credit">📝 Credit</option>
-      </select>
-      <button onclick="sellProduct('${p.id}', ${p.stock})">Sell</button>
+      <div style="display: inline-flex; align-items: center; gap: 4px;">
+        <select id="pay-${p.id}">
+          <option value="cash">💵 Cash</option>
+          <option value="credit">📝 Credit</option>
+        </select>
+        <button onclick="sellProduct('${p.id}', ${p.stock})">Sell</button>
+      </div>
     </td>`;
 }
 
 function renderInventory(products) {
   if (!inventoryList) return;
+
+  if (!products || products.length === 0) {
+    inventoryList.innerHTML = `
+      <tr>
+        <td colspan="10" style="padding: 30px 10px; color: #666; font-size: 13px; text-align: center;">
+          📦 No products found in the database.
+          <br>
+          <button type="button" onclick="seedSampleCatalog()" style="margin-top: 10px; padding: 6px 14px; background: #6b3fa0; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px;">
+            ✨ Populate Sample Products (10 Items)
+          </button>
+        </td>
+      </tr>
+    `;
+    return;
+  }
 
   let html = "";
 
@@ -165,13 +382,36 @@ function renderInventory(products) {
     const threshold = p.lowStockThreshold ?? 5;
     const isLowStock = Number(p.stock) <= threshold;
     const rowClass = isLowStock ? "low-stock-row" : "";
+    const isVisible = p.isVisible !== false;
+
+    const currentCat = p.category || "General";
+    const availableCats = Array.from(new Set([...window.categoriesCache, currentCat]));
+    const catOptionsHTML = availableCats.map(c =>
+      `<option value="${c}" ${c === currentCat ? 'selected' : ''}>${c}</option>`
+    ).join("");
 
     html += `
-      <tr class="${rowClass}" data-product-id="${p.id}">
-        <td>${p.name}${isLowStock ? ` <span class="low-stock-badge">Low</span>` : ""}</td>
-        <td>${p.price}</td>
+      <tr class="${rowClass}" data-product-id="${p.id}" style="${!isVisible ? 'opacity: 0.65; background: #fafafa;' : ''}">
+        <td><strong>${p.name}</strong>${isLowStock ? ` <span class="low-stock-badge">Low</span>` : ""}</td>
+        <td>
+          <select onchange="updateProductCategory('${p.id}', this.value)">
+            ${catOptionsHTML}
+          </select>
+        </td>
+        <td>₹${p.price}</td>
         <td class="${isLowStock ? "low-stock-cell" : ""}"><span class="stock-value">${p.stock}</span></td>
-        <td><button onclick="restockProduct('${p.id}', ${p.stock})" style="background: #28a745; padding: 4px 8px; font-size: 0.85rem; border-radius: 4px;">Restock</button></td>
+        <td>
+          <div style="display: inline-flex; align-items: center; justify-content: center; gap: 4px;">
+            <label class="switch" title="${isVisible ? 'Product is Visible to customers' : 'Product is Hidden from customers'}">
+              <input type="checkbox" ${isVisible ? 'checked' : ''} onchange="toggleProductVisibility('${p.id}', ${isVisible})">
+              <span class="slider"></span>
+            </label>
+            <span style="font-size: 11px; font-weight: 600; color: ${isVisible ? '#28a745' : '#888'};">
+              ${isVisible ? 'Visible' : 'Hidden'}
+            </span>
+          </div>
+        </td>
+        <td><button onclick="restockProduct('${p.id}', ${p.stock})" style="background: #28a745;">Restock</button></td>
         ${renderSellControls(p)}
         <td>
           <button onclick="deleteProduct('${p.id}')" style="background: #dc3545;">Remove</button>
@@ -189,9 +429,13 @@ if (inventoryList) {
       inventoryCache.push({ id: d.id, ...normalizeProduct(d.data()) });
     });
     applyInventoryView();
+  }, (err) => {
+    console.error("Error loading inventory:", err);
+    inventoryList.innerHTML = `<tr><td colspan="10" style="padding: 20px; color: red;">Error loading inventory: ${err.message}</td></tr>`;
   });
 
   productSearchInput?.addEventListener("input", applyInventoryView);
+  categoryFilterInput?.addEventListener("change", applyInventoryView);
 }
 
 /* SELL PRODUCT */
@@ -1210,29 +1454,28 @@ doc.line(110, y - 5, 195, y - 5);
 doc.setFontSize(11);
 
 doc.text("Current Bill Total:", 120, y);
-doc.text("Rs " + currentBillTotal.toFixed(2), 165, y);
-y += 8;
-
-if (advanceCurrent > 0) {
-  doc.text("Advance :", 120, y);
-  doc.text("Rs -" + advanceCurrent.toFixed(2), 165, y);
+  doc.text("₹ " + currentBillTotal.toFixed(2), 165, y);
   y += 8;
-}
 
-doc.line(120, y - 2, 195, y - 2);
-y += 8;
-doc.setFontSize(13);
+  if (advanceCurrent > 0) {
+    doc.text("Advance :", 120, y);
+    doc.text("₹ -" + advanceCurrent.toFixed(2), 165, y);
+    y += 8;
+  }
 
-const adjustedBillPdf = netBalance > 0 ? netBalance : 0;
-const advanceBalancePdf = netBalance < 0 ? Math.abs(netBalance) : 0;
+  doc.line(120, y - 2, 195, y - 2);
+  y += 8;
+  doc.setFontSize(13);
 
-doc.text("Current Bill:", 120, y);
-doc.text("Rs " + adjustedBillPdf.toFixed(2), 165, y);
-y += 8;
+  const adjustedBillPdf = netBalance > 0 ? netBalance : 0;
+  const advanceBalancePdf = netBalance < 0 ? Math.abs(netBalance) : 0;
 
-doc.text("Advance Balance:", 120, y);
-doc.text("Rs " + advanceBalancePdf.toFixed(2), 165, y);
+  doc.text("Current Bill:", 120, y);
+  doc.text("₹ " + adjustedBillPdf.toFixed(2), 165, y);
+  y += 8;
 
+  doc.text("Advance Balance:", 120, y);
+  doc.text("₹ " + advanceBalancePdf.toFixed(2), 165, y);
 y += 20;
 // 🔷 FOOTER
 doc.setFillColor(43, 104, 126);
@@ -1293,13 +1536,13 @@ window.generateFullLedgerPDF = function () {
     if (item.type === "credit") {
       doc.text("Purchase", 110, y);
       doc.text(String(item.qty), 140, y);
-      doc.text("Rs " + item.amount.toFixed(2), 165, y);
+      doc.text("₹ " + item.amount.toFixed(2), 165, y);
       totalOutstanding += item.amount;
     } else {
       doc.text("Payment", 110, y);
       doc.text("-", 140, y);
       doc.setTextColor(0, 128, 0);
-      doc.text("Rs -" + item.amount.toFixed(2), 165, y);
+      doc.text("₹ -" + item.amount.toFixed(2), 165, y);
       doc.setTextColor(0, 0, 0);
       totalOutstanding -= item.amount;
     }
@@ -1320,11 +1563,11 @@ window.generateFullLedgerPDF = function () {
   const advanceBalanceLedger = totalOutstanding < 0 ? Math.abs(totalOutstanding) : 0;
 
   doc.text("Current Bill:", 120, y);
-  doc.text("Rs " + adjustedBillLedger.toFixed(2), 165, y);
+  doc.text("₹ " + adjustedBillLedger.toFixed(2), 165, y);
   y += 8;
 
   doc.text("Advance Balance:", 120, y);
-  doc.text("Rs " + advanceBalanceLedger.toFixed(2), 165, y);
+  doc.text("₹ " + advanceBalanceLedger.toFixed(2), 165, y);
 
   doc.save(currentCustomerName + "_Full_Ledger.pdf");
 };
@@ -1412,4 +1655,509 @@ if (paymentBtn) {
   paymentBtn.addEventListener("click", async () => {
     await window.addPayment();
   });
+}
+
+function normalizeCustomerName(name, email) {
+  const trimmedName = String(name || '').trim();
+  const trimmedEmail = String(email || '').trim();
+
+  if (trimmedName && trimmedName !== trimmedEmail && !trimmedName.includes('@')) {
+    return trimmedName;
+  }
+
+  if (trimmedEmail) {
+    const localPart = trimmedEmail.split('@')[0]?.trim();
+    return localPart || 'Customer';
+  }
+
+  return trimmedName || 'Customer';
+}
+
+function normalizeOrderStatus(status) {
+  const value = String(status || "").trim().toLowerCase();
+  if (!value || value === "new" || value === "pending") return "pending";
+  return value;
+}
+
+function formatOrderStatus(status) {
+  const value = normalizeOrderStatus(status);
+  return value
+    .split("_")
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function formatOrderDate(value) {
+  if (!value) return "N/A";
+
+  if (value && typeof value.toDate === "function") {
+    return value.toDate().toLocaleString();
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "N/A";
+  }
+
+  return parsed.toLocaleString();
+}
+
+function formatCurrency(value) {
+  return `₹ ${Number(value || 0).toFixed(2)}`;
+}
+
+function getSessionOrders() {
+  try {
+    const raw = sessionStorage.getItem("shop_session_test_orders");
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    console.warn("Unable to read fallback session orders:", error);
+    return [];
+  }
+}
+
+function getOrderTime(order) {
+  const source = order.timestamp || order.createdAt || order.updatedAt;
+
+  if (source && typeof source.toDate === "function") {
+    return source.toDate().getTime();
+  }
+
+  if (source && typeof source === "object" && source.seconds !== undefined) {
+    return new Date(source.seconds * 1000).getTime();
+  }
+
+  const parsed = new Date(source);
+  return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+}
+
+function mergeOrders(firestoreOrders = []) {
+  const fallbackOrders = getSessionOrders();
+  const merged = [...fallbackOrders, ...firestoreOrders];
+  const deduped = new Map();
+
+  merged.forEach(order => {
+    const key = order.orderId || order.id || `${order.customer?.contact || "customer"}-${getOrderTime(order)}`;
+    if (!deduped.has(key)) {
+      deduped.set(key, {
+        ...order,
+        orderId: order.orderId || order.id || key,
+        id: order.id || order.orderId || key,
+        orderStatus: order.orderStatus || "new",
+        customer: order.customer || {},
+        items: Array.isArray(order.items) ? order.items : [],
+        pricing: order.pricing || {}
+      });
+    }
+  });
+
+  return Array.from(deduped.values()).sort((a, b) => getOrderTime(b) - getOrderTime(a));
+}
+
+window.closeOrderModal = function () {
+  const modal = document.getElementById("orderDetailsModal");
+  if (modal) modal.style.display = "none";
+};
+
+async function getInventoryAvailabilityForOrder(order) {
+  const entries = Array.isArray(order?.items) ? order.items : [];
+  if (!entries.length) return true;
+
+  const inventorySnap = await getDocs(collection(db, "inventory"));
+  const inventoryMap = new Map();
+
+  inventorySnap.forEach(docSnap => {
+    const data = docSnap.data() || {};
+    inventoryMap.set(docSnap.id, { id: docSnap.id, ...data });
+    inventoryMap.set(String(data.name || '').trim().toLowerCase(), { id: docSnap.id, ...data });
+  });
+
+  for (const item of entries) {
+    const quantity = Number(item.quantity || 0);
+    if (quantity <= 0) continue;
+
+    const inventoryItem = item.productId ? inventoryMap.get(item.productId) : null;
+    const fallbackMatch = inventoryItem || inventoryMap.get(String(item.name || '').trim().toLowerCase());
+    if (!fallbackMatch) continue;
+
+    const currentStock = Number(fallbackMatch.stock || 0);
+    if (currentStock < quantity) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+async function restoreInventoryForOrder(order) {
+  if (!order || !Array.isArray(order.items) || !order.items.length) return;
+
+  const inventorySnap = await getDocs(collection(db, "inventory"));
+  const inventoryMap = new Map();
+
+  inventorySnap.forEach(docSnap => {
+    const data = docSnap.data() || {};
+    inventoryMap.set(docSnap.id, { id: docSnap.id, ...data });
+    inventoryMap.set(String(data.name || '').trim().toLowerCase(), { id: docSnap.id, ...data });
+  });
+
+  for (const item of order.items) {
+    const quantity = Number(item.quantity || 0);
+    if (quantity <= 0) continue;
+
+    const inventoryItem = item.productId ? inventoryMap.get(item.productId) : null;
+    const fallbackMatch = inventoryItem || inventoryMap.get(String(item.name || '').trim().toLowerCase());
+    if (!fallbackMatch) continue;
+
+    const inventoryRef = doc(db, "inventory", fallbackMatch.id);
+    const snapshot = await getDoc(inventoryRef);
+    if (!snapshot.exists()) continue;
+
+    const currentStock = Number(snapshot.data()?.stock || 0);
+    await updateDoc(inventoryRef, {
+      stock: currentStock + quantity,
+      updatedAt: new Date()
+    });
+  }
+}
+
+async function commitAcceptedOrderStock(order) {
+  if (!order || !Array.isArray(order.items) || !order.items.length) return;
+
+  const inventorySnap = await getDocs(collection(db, "inventory"));
+  const inventoryMap = new Map();
+
+  inventorySnap.forEach(docSnap => {
+    const data = docSnap.data() || {};
+    inventoryMap.set(docSnap.id, { id: docSnap.id, ...data });
+    inventoryMap.set(String(data.name || '').trim().toLowerCase(), { id: docSnap.id, ...data });
+  });
+
+  for (const item of order.items) {
+    const quantity = Number(item.quantity || 0);
+    if (quantity <= 0) continue;
+
+    const productId = item.productId || item.id;
+    const inventoryEntry = productId ? inventoryMap.get(productId) : null;
+    const fallbackEntry = inventoryEntry || inventoryMap.get(String(item.name || '').trim().toLowerCase());
+
+    if (!fallbackEntry) continue;
+
+    const inventoryRef = doc(db, "inventory", fallbackEntry.id);
+
+    await runTransaction(db, async (transaction) => {
+      const currentSnap = await transaction.get(inventoryRef);
+      if (!currentSnap.exists()) return;
+
+      const currentStock = Number(currentSnap.data()?.stock || 0);
+      const nextStock = Math.max(0, currentStock - quantity);
+      transaction.update(inventoryRef, {
+        stock: nextStock,
+        updatedAt: new Date()
+      });
+    });
+  }
+}
+
+window.acceptOrder = async function (orderId) {
+  const order = window.ordersCache.find(item => (item.orderId || item.id) === orderId);
+  if (!order) return;
+
+  try {
+    const hasStockAvailable = await getInventoryAvailabilityForOrder(order);
+    if (!hasStockAvailable) {
+      alert("This order cannot be accepted because the inventory for one or more items has already been exhausted.");
+      return;
+    }
+
+    if (order.items && Array.isArray(order.items)) {
+      await commitAcceptedOrderStock(order);
+    }
+
+    const customer = order.customer || {};
+    const customerName = normalizeCustomerName(customer.name, customer.email);
+    const customerPhone = customer.contact || "";
+    const customerEmail = customer.email || "";
+    const customerAddress = customer.deliveryAddress || customer.address || "";
+
+    const customerSnap = await getDocs(collection(db, "customers"));
+    let targetCustomerId = null;
+
+    customerSnap.forEach(docSnap => {
+      const data = docSnap.data() || {};
+      const matchesPhone = customerPhone && data.contact === customerPhone;
+      const matchesEmail = customerEmail && data.email === customerEmail;
+      if (matchesPhone || matchesEmail) {
+        targetCustomerId = docSnap.id;
+      }
+    });
+
+    if (targetCustomerId) {
+      await updateDoc(doc(db, "customers", targetCustomerId), {
+        name: customerName,
+        contact: customerPhone,
+        email: customerEmail,
+        address: customerAddress,
+        updatedAt: new Date()
+      });
+    } else {
+      await addDoc(collection(db, "customers"), {
+        name: customerName,
+        contact: customerPhone,
+        email: customerEmail,
+        address: customerAddress,
+        createdAt: new Date(),
+        source: "accepted_order"
+      });
+    }
+
+    if (order.id) {
+      await updateDoc(doc(db, "orders", order.id), {
+        orderStatus: "accepted",
+        acceptedAt: new Date(),
+        acceptedBy: "admin"
+      });
+    }
+
+    alert("Order accepted and inventory updated.");
+  } catch (error) {
+    console.error("Failed to accept order:", error);
+    alert("Unable to accept this order right now.");
+  }
+};
+
+window.rejectOrder = async function (orderId) {
+  const order = window.ordersCache.find(item => (item.orderId || item.id) === orderId);
+  if (!order) return;
+
+  const orderLabel = order.orderId || order.id || "this order";
+  const confirmed = window.confirm(
+    `Mark ${orderLabel} as rejected? It will stay in Firestore with a rejected status and appear in the rejected log.`
+  );
+  if (!confirmed) return;
+
+  try {
+    if (order.id) {
+      const currentStatus = normalizeOrderStatus(order.orderStatus);
+      if (currentStatus === "accepted") {
+        await restoreInventoryForOrder(order);
+      }
+
+      await updateDoc(doc(db, "orders", order.id), {
+        orderStatus: "rejected",
+        rejectedAt: new Date(),
+        rejectedBy: "admin",
+        updatedAt: new Date()
+      });
+      alert("Order marked as rejected and inventory restored if it had already been reduced.");
+    } else {
+      alert("This local order was only marked as rejected in the admin view.");
+    }
+  } catch (error) {
+    console.error("Failed to reject order:", error);
+    alert("Unable to update this order status to rejected.");
+  }
+};
+
+window.removeOrder = function (orderId) {
+  window.rejectOrder(orderId);
+};
+
+window.ordersCache = [];
+
+window.showOrderDetails = function (orderId) {
+  const order = window.ordersCache.find(item => (item.orderId || item.id) === orderId);
+
+  if (!order) return;
+
+  const modal = document.getElementById("orderDetailsModal");
+  const content = document.getElementById("orderDetailsContent");
+  if (!modal || !content) return;
+
+  const statusLabel = formatOrderStatus(order.orderStatus);
+  const itemRows = (order.items || []).map(item => `
+    <tr>
+      <td>${item.name || "Product"}</td>
+      <td>${item.quantity || 0}</td>
+      <td>${formatCurrency(item.unitPrice || 0)}</td>
+      <td>${formatCurrency(item.itemTotal || 0)}</td>
+    </tr>
+  `).join("") || '<tr><td colspan="4">No items</td></tr>';
+
+  const displayCustomerName = normalizeCustomerName(order.customer?.name, order.customer?.email);
+  document.getElementById("orderModalTitle").textContent = `${order.orderId} • ${statusLabel}`;
+  content.innerHTML = `
+    <div class="details-grid">
+      <div class="detail-box">
+        <h4>Customer</h4>
+        <div>${displayCustomerName}</div>
+      </div>
+      <div class="detail-box">
+        <h4>Contact</h4>
+        <div>${order.customer?.contact || "N/A"}</div>
+      </div>
+      <div class="detail-box">
+        <h4>Placed</h4>
+        <div>${formatOrderDate(order.timestamp || order.createdAt || order.updatedAt)}</div>
+      </div>
+      <div class="detail-box">
+        <h4>Status</h4>
+        <div>${statusLabel}</div>
+      </div>
+    </div>
+
+    <div class="detail-box" style="margin-bottom: 16px;">
+      <h4>Delivery Address</h4>
+      <div>${order.customer?.deliveryAddress || "No address provided"}</div>
+    </div>
+
+    <table class="rows-table">
+      <thead>
+        <tr>
+          <th>Item</th>
+          <th>Qty</th>
+          <th>Rate</th>
+          <th>Amount</th>
+        </tr>
+      </thead>
+      <tbody>${itemRows}</tbody>
+    </table>
+
+    <div class="amount-total">
+      Total: ${formatCurrency(order.pricing?.grandTotal || 0)}
+    </div>
+  `;
+
+  modal.style.display = "block";
+};
+
+function initOrdersPage() {
+  const pendingTableBody = document.getElementById("pendingOrdersTableBody");
+  const acceptedTableBody = document.getElementById("acceptedOrdersTableBody");
+  const rejectedTableBody = document.getElementById("rejectedOrdersTableBody");
+  const tabButtons = document.querySelectorAll(".tab-btn");
+
+  if (!pendingTableBody || !acceptedTableBody || !rejectedTableBody) return;
+
+  const switchTab = (targetId) => {
+    const containers = document.querySelectorAll(".table-container");
+    containers.forEach(container => {
+      container.classList.toggle("active", container.id === targetId);
+    });
+
+    tabButtons.forEach(button => {
+      button.classList.toggle("active", button.dataset.target === targetId);
+    });
+  };
+
+  tabButtons.forEach(button => {
+    button.addEventListener("click", () => switchTab(button.dataset.target));
+  });
+
+  const renderOrderRows = (orders, tableBody, statusFilter) => {
+    const filteredOrders = orders.filter(order => normalizeOrderStatus(order.orderStatus) === statusFilter);
+
+    if (filteredOrders.length === 0) {
+      tableBody.innerHTML = `
+        <tr>
+          <td colspan="7" style="text-align: center; padding: 24px; color: #64748b;">
+            No ${statusFilter} orders in the log.
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    tableBody.innerHTML = filteredOrders.map(order => {
+      const status = formatOrderStatus(order.orderStatus);
+      const displayCustomerName = normalizeCustomerName(order.customer?.name, order.customer?.email);
+      const statusColor = {
+        "Pending": "#e0f2fe",
+        "Accepted": "#dcfce7",
+        "Rejected": "#fee2e2"
+      };
+
+      const textColor = {
+        "Pending": "#075985",
+        "Accepted": "#166534",
+        "Rejected": "#991b1b"
+      };
+
+      const style = `background:${statusColor[status] || '#e2e8f0'}; color:${textColor[status] || '#334155'};`;
+      const orderKey = order.orderId || order.id;
+      const isAccepted = normalizeOrderStatus(order.orderStatus) === "accepted";
+      const isRejected = normalizeOrderStatus(order.orderStatus) === "rejected";
+
+      return `
+        <tr>
+          <td>${orderKey}</td>
+          <td>${displayCustomerName}</td>
+          <td>${order.customer?.contact || "N/A"}</td>
+          <td>${formatOrderDate(order.timestamp || order.createdAt || order.updatedAt)}</td>
+          <td><span class="status-pill" style="${style}">${status}</span></td>
+          <td>${formatCurrency(order.pricing?.grandTotal || 0)}</td>
+          <td>
+            <button class="action-btn" onclick="showOrderDetails('${orderKey}')">View</button>
+            ${statusFilter === "pending" ? `
+              <button class="action-btn" onclick="acceptOrder('${orderKey}')" ${isAccepted ? 'disabled' : ''}>Accept</button>
+              <button class="action-btn delete" onclick="rejectOrder('${orderKey}')" ${isRejected ? 'disabled' : ''}>Reject</button>
+            ` : ""}
+          </td>
+        </tr>
+      `;
+    }).join("");
+  };
+
+  const renderOrders = (orders) => {
+    window.ordersCache = orders;
+    renderOrderRows(orders, pendingTableBody, "pending");
+    renderOrderRows(orders, acceptedTableBody, "accepted");
+    renderOrderRows(orders, rejectedTableBody, "rejected");
+  };
+
+  const normalizeExistingOrderNames = async (orders) => {
+    const updates = orders
+      .filter(order => !!order.id && String(order.customer?.email || '').trim())
+      .map(async order => {
+        try {
+          const matchingCustomer = await getCustomerProfileByEmail(order.customer?.email || '');
+          const customerName = matchingCustomer?.name || normalizeCustomerName(order.customer?.name, order.customer?.email);
+          const currentName = String(order.customer?.name || '').trim();
+
+          if (!matchingCustomer && currentName === customerName) return;
+          if (matchingCustomer && currentName === customerName) return;
+
+          await updateDoc(doc(db, 'orders', order.id), {
+            customer: {
+              ...(order.customer || {}),
+              name: customerName
+            },
+            updatedAt: new Date()
+          });
+        } catch (error) {
+          console.warn('Order customer name sync skipped:', error);
+        }
+      });
+
+    if (updates.length) {
+      await Promise.allSettled(updates);
+    }
+  };
+
+  renderOrders(mergeOrders([]));
+
+  onSnapshot(collection(db, "orders"), async (snapshot) => {
+    const firestoreOrders = snapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
+    await normalizeExistingOrderNames(firestoreOrders);
+    renderOrders(mergeOrders(firestoreOrders));
+  }, (error) => {
+    console.error("Orders snapshot failed:", error);
+    renderOrders(mergeOrders([]));
+  });
+}
+
+if (document.getElementById("pendingOrdersTableBody")) {
+  initOrdersPage();
 }

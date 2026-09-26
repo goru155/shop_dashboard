@@ -5,6 +5,7 @@ header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  font-family: "Segoe UI", Arial, sans-serif;
 }
 
 nav a {
@@ -12,8 +13,13 @@ nav a {
   margin-left: 20px;
   text-decoration: none;
   font-weight: 500;
+  font-family: "Segoe UI", Arial, sans-serif;
 }
 
 nav a:hover {
   text-decoration: underline;
+}
+
+button {
+  font-family: "Segoe UI", Arial, sans-serif;
 }

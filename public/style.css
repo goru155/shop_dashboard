@@ -1,3 +1,28 @@
+body {
+  font-family: "Segoe UI", Arial, sans-serif;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+button {
+  background: #6b3fa0;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background 0.2s ease;
+}
+
+button:hover {
+  background: #5a3387;
+}
+
 .card {
   background: white;
   margin: 30px;

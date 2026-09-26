@@ -9,6 +9,10 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
   <style>
+    body {
+      font-family: "Segoe UI", Arial, sans-serif;
+    }
+
     .table-container{
       max-height:450px;
       overflow-y:auto;
@@ -42,9 +46,15 @@
       color:white;
       border:none;
       padding:7px 18px;
-      border-radius:20px;
+      border-radius:6px;
       cursor:pointer;
       margin:4px;
+      font-family: "Segoe UI", Arial, sans-serif;
+      font-weight: 500;
+    }
+
+    button:hover {
+      background: #5a3387;
     }
 
     .modal{
@@ -114,6 +124,7 @@
     <a href="inventory.html">Inventory</a>
     <a href="customers.html">Customers</a>
     <a href="billing.html">Billing</a>
+    <a href="orders.html">Orders</a>
     <a href="#" onclick="logout()" style="color: #ffcccc;">Logout</a>
   </nav>
 </header>

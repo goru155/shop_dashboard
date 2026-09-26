@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html>
 <head>
@@ -15,7 +16,8 @@ body {
   margin: 0;
   padding: 15px;
   box-sizing: border-box;
-  font-family: Arial, sans-serif;
+  font-family: "Segoe UI", Arial, sans-serif;
+  background: #f5f6fa;
 }
 
 /* ================= HEADER ================= */
@@ -28,17 +30,12 @@ header {
   gap: 10px;
 }
 
-/* nav a {
-  margin-left: 12px;
-  text-decoration: none;
-  color: #6b3fa0;
-  font-weight: 500;
-} */
- header nav a {
+header nav a {
   color: white;
   margin-left: 20px;
   font-size: 15px;
   transition: 0.3s;
+  text-decoration: none;
 }
 
 header nav a:hover {
@@ -73,12 +70,12 @@ header nav a:hover {
   border-radius: 8px;
 }
 
-.row select,
-.row input {
-  flex: 1 1 180px;
-  padding: 8px;
+#categoryFilter {
+  padding: 8px 12px;
   border: 1px solid #ccc;
-  border-radius: 6px;
+  border-radius: 8px;
+  flex: 1 1 180px;
+  max-width: 250px;
 }
 
 /* ================= INPUT ROW ================= */
@@ -90,46 +87,52 @@ header nav a:hover {
   margin-bottom: 15px;
 }
 
-.row input {
-  flex: 1 1 180px;
+.row input,
+.row select {
+  flex: 1 1 160px;
   padding: 8px;
   border: 1px solid #ccc;
   border-radius: 6px;
+  box-sizing: border-box;
 }
 
 .row button {
-  flex: 1 1 150px;
+  flex: 0 0 auto;
+  padding: 8px 18px;
 }
 
 /* ================= TABLE ================= */
 
 .table-container {
-  max-height: 450px;
-  overflow-y: auto;
+  width: 100%;
   overflow-x: auto;
   border: 1px solid #ddd;
   border-radius: 10px;
-  width: 100%;
+  background: white;
+  box-sizing: border-box;
 }
 
 table {
   width: 100%;
   border-collapse: collapse;
   background: white;
+  table-layout: auto;
 }
 
 th, td {
-  padding: 12px;
+  padding: 8px 6px;
   border-bottom: 1px solid #eee;
   text-align: center;
-  white-space: nowrap;
+  font-size: 13px;
+  vertical-align: middle;
+  box-sizing: border-box;
 }
 
 th {
   background: #6b3fa0;
   color: white;
-  position: sticky;
-  top: 0;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 tr.low-stock-row {
@@ -143,7 +146,7 @@ tr.low-stock-row:hover {
 .low-stock-badge {
   display: inline-block;
   margin-left: 6px;
-  padding: 2px 8px;
+  padding: 2px 7px;
   border-radius: 999px;
   background: #dc3545;
   color: white;
@@ -164,35 +167,61 @@ tr:hover {
 /* ================= CUSTOMER SEARCH ================= */
 
 .custSearch {
-  width: 100%;
-  padding: 6px;
+  width: 95%;
+  min-width: 80px;
+  padding: 4px 6px;
   border: 1px solid #ccc;
   border-radius: 4px;
+  font-size: 12px;
+  box-sizing: border-box;
+}
+
+[id^="suggest-"] {
+  position: absolute;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+  z-index: 100;
+  width: 120px;
+  max-height: 120px;
+  overflow-y: auto;
+  font-size: 12px;
+  text-align: left;
 }
 
 /* ================= QTY STEPPER ================= */
 
 .qtyStepper {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 3px;
 }
 
 .qtyStepper button {
-  width: 30px;
-  height: 30px;
+  width: 24px;
+  height: 24px;
   border: none;
   background: #6b3fa0;
   color: white;
-  border-radius: 6px;
+  border-radius: 4px;
   cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
 }
 
 .qtyStepper input {
-  width: 55px;
+  width: 32px;
   text-align: center;
-  padding: 6px;
+  padding: 3px;
+  font-size: 12px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  min-width: unset;
 }
 
 /* ================= SWITCH ================= */
@@ -200,9 +229,10 @@ tr:hover {
 .switch {
   position: relative;
   display: inline-block;
-  width: 42px;
-  height: 22px;
-  margin-right: 8px;
+  width: 34px;
+  height: 18px;
+  margin-right: 4px;
+  vertical-align: middle;
 }
 
 .switch input {
@@ -213,15 +243,16 @@ tr:hover {
   position: absolute;
   cursor: pointer;
   background: #ccc;
-  border-radius: 20px;
+  border-radius: 18px;
   top: 0; left: 0; right: 0; bottom: 0;
+  transition: .2s;
 }
 
 .slider:before {
   position: absolute;
   content: "";
-  height: 18px;
-  width: 18px;
+  height: 14px;
+  width: 14px;
   left: 2px;
   bottom: 2px;
   background: white;
@@ -234,7 +265,7 @@ input:checked + .slider {
 }
 
 input:checked + .slider:before {
-  transform: translateX(20px);
+  transform: translateX(16px);
 }
 
 /* ================= BUTTONS ================= */
@@ -243,14 +274,25 @@ button {
   background: #6b3fa0;
   color: white;
   border: none;
-  padding: 8px 18px;
-  border-radius: 20px;
+  padding: 6px 12px;
+  border-radius: 6px;
   cursor: pointer;
   font-weight: 500;
+  font-size: 13px;
+  white-space: nowrap;
 }
 
 button:hover {
   background: #5a3387;
+}
+
+td select {
+  padding: 4px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  font-size: 12px;
+  min-width: unset;
+  max-width: 110px;
 }
 
 /* ================= MOBILE ADJUSTMENTS ================= */
@@ -258,17 +300,17 @@ button:hover {
 @media (max-width: 768px) {
 
   th, td {
-    padding: 6px;
-    font-size: 12px;
+    padding: 6px 4px;
+    font-size: 11px;
   }
 
   button {
-    padding: 6px 10px;
-    font-size: 12px;
+    padding: 4px 8px;
+    font-size: 11px;
   }
 
   .qtyStepper input {
-    width: 45px;
+    width: 26px;
   }
 
   header {
@@ -290,9 +332,11 @@ button:hover {
 <header>
   <h3>Shop Admin</h3>
   <nav>
+    <a href="dashboard.html">Dashboard</a>
     <a href="inventory.html">Inventory</a>
     <a href="customers.html">Customers</a>
     <a href="billing.html">Billing</a>
+    <a href="orders.html">Orders</a>
     <a href="#" onclick="logout()" style="color: #ffcccc;">Logout</a>
   </nav>
 </header>
@@ -300,18 +344,41 @@ button:hover {
 <section class="card">
   <h2>Inventory Management</h2>
 
-  <div class="filter-toolbar">
-    <input
-      type="text"
-      id="productSearch"
-      placeholder="🔍 Search product..."
-    >
+  <div
+    style="margin-bottom: 20px; padding: 15px; background: #f7f4fb; border-radius: 8px; border: 1px solid #e0d0f5;">
+    <h3 style="margin-top:0; margin-bottom: 10px; color: #6b3fa0;">📁 Manage Categories</h3>
+    <div class="row" style="margin-bottom:0;">
+      <input id="newCatName" placeholder="New category name (e.g. Electronics)">
+      <button onclick="addCategory()">Add Category</button>
+    </div>
+  </div>
+
+  <div class="filter-toolbar" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+    <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center; flex: 1;">
+      <input
+        type="text"
+        id="productSearch"
+        placeholder="🔍 Search product..."
+        style="max-width: 300px;"
+      >
+      <select id="categoryFilter">
+        <option value="all">All Categories</option>
+      </select>
+    </div>
+    <div>
+      <button onclick="clearAllInventory()" style="background: #dc3545; color: white; display: inline-flex; align-items: center; gap: 6px; font-weight: 600;">
+        🗑️ Delete All Inventory
+      </button>
+    </div>
   </div>
 
   <div class="row">
     <input id="pname" placeholder="Product name">
     <input id="pprice" type="number" placeholder="Price">
     <input id="pstock" type="number" placeholder="Stock">
+    <select id="pcategory">
+      <option value="General">General</option>
+    </select>
     <button onclick="addProduct()">Add Product</button>
   </div>
 
@@ -320,8 +387,10 @@ button:hover {
       <thead>
         <tr>
           <th>Product</th>
+          <th>Category</th>
           <th>Price (₹)</th>
           <th>Stock</th>
+          <th>Visibility</th>
           <th>Restock</th>
           <th>Sold To</th>
           <th>Qty</th>

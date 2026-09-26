@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Orders</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="nav.css">
+
+  <style>
+    body {
+      margin: 0;
+      padding: 15px;
+      box-sizing: border-box;
+      font-family: "Segoe UI", Arial, sans-serif;
+      background: #f5f6fa;
+    }
+
+    button {
+      background: #6b3fa0;
+      color: white;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 500;
+      font-size: 13px;
+      white-space: nowrap;
+      font-family: "Segoe UI", Arial, sans-serif;
+    }
+
+    button:hover {
+      background: #5a3387;
+    }
+
+    .action-btn {
+      margin-left: 6px;
+      font-size: 12px;
+      padding: 5px 10px;
+    }
+
+    .action-btn.delete {
+      background: #ef4444;
+    }
+
+    .action-btn.delete:hover {
+      background: #dc2626;
+    }
+
+    .action-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .card {
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+      margin-top: 20px;
+    }
+
+    .tab-switcher {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: 15px 0 10px;
+    }
+
+    .tab-btn {
+      background: #e9e2f5;
+      color: #4a2a72;
+      border: 1px solid #d7c8ef;
+      padding: 8px 16px;
+      border-radius: 999px;
+      font-weight: 700;
+    }
+
+    .tab-btn.active {
+      background: #6b3fa0;
+      color: white;
+      border-color: #6b3fa0;
+    }
+
+    .table-container {
+      max-height: 550px;
+      overflow-y: auto;
+      border: 1px solid #ddd;
+      border-radius: 10px;
+      overflow-x: auto;
+      margin-top: 15px;
+      display: none;
+    }
+
+    .table-container.active {
+      display: block;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      min-width: 760px;
+    }
+
+    th, td {
+      padding: 12px 10px;
+      border-bottom: 1px solid #eee;
+      text-align: left;
+      font-size: 14px;
+    }
+
+    th {
+      background: #6b3fa0;
+      color: white;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+
+    tr:hover {
+      background: #f7f4fb;
+    }
+
+    .status-pill {
+      display: inline-block;
+      padding: 5px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: capitalize;
+    }
+
+    .modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.45);
+      z-index: 50;
+    }
+
+    .modal-content {
+      background: white;
+      width: min(680px, 92vw);
+      margin: 40px auto;
+      border-radius: 20px;
+      padding: 18px 18px 14px;
+      max-height: calc(100vh - 80px);
+      overflow: hidden;
+      box-sizing: border-box;
+      box-shadow: 0 20px 45px rgba(15, 23, 42, 0.18);
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+
+    .close-btn {
+      background: #6b3fa0;
+      color: white;
+      border: none;
+      font-weight: 700;
+      padding: 8px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    .details-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .detail-box {
+      background: #f8f7fb;
+      border: 1px solid #e7e0f3;
+      border-radius: 12px;
+      padding: 10px 12px;
+    }
+
+    .detail-box h4 {
+      margin: 0 0 8px;
+      color: #6b3fa0;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .detail-box div {
+      color: #222;
+      line-height: 1.5;
+    }
+
+    .rows-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 8px;
+    }
+
+    .rows-table th,
+    .rows-table td {
+      padding: 8px 8px;
+      text-align: left;
+      border-bottom: 1px solid #eee;
+      border-radius: 0;
+    }
+
+    .rows-table th {
+      background: #f2ecf9;
+      color: #4a2a72;
+    }
+
+    .amount-total {
+      margin-top: 10px;
+      border-top: 1px solid #eee;
+      padding-top: 10px;
+      text-align: right;
+      font-weight: 700;
+      font-size: 16px;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h3>Shop Admin</h3>
+  <nav>
+    <a href="inventory.html">Inventory</a>
+    <a href="customers.html">Customers</a>
+    <a href="billing.html">Billing</a>
+    <a href="orders.html">Orders</a>
+    <a href="#" onclick="logout()" style="color: #ffcccc;">Logout</a>
+  </nav>
+</header>
+
+<section class="card">
+  <h2>Orders</h2>
+
+  <div class="tab-switcher">
+    <button class="tab-btn active" data-target="pendingOrdersTableContainer">Pending</button>
+    <button class="tab-btn" data-target="acceptedOrdersTableContainer">Accepted</button>
+    <button class="tab-btn" data-target="rejectedOrdersTableContainer">Rejected</button>
+  </div>
+
+  <div id="pendingOrdersTableContainer" class="table-container active">
+    <table>
+      <thead>
+        <tr>
+          <th>Order ID</th>
+          <th>Customer</th>
+          <th>Contact</th>
+          <th>Placed</th>
+          <th>Status</th>
+          <th>Total</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="pendingOrdersTableBody"></tbody>
+    </table>
+  </div>
+
+  <div id="acceptedOrdersTableContainer" class="table-container">
+    <table>
+      <thead>
+        <tr>
+          <th>Order ID</th>
+          <th>Customer</th>
+          <th>Contact</th>
+          <th>Placed</th>
+          <th>Status</th>
+          <th>Total</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="acceptedOrdersTableBody"></tbody>
+    </table>
+  </div>
+
+  <div id="rejectedOrdersTableContainer" class="table-container">
+    <table>
+      <thead>
+        <tr>
+          <th>Order ID</th>
+          <th>Customer</th>
+          <th>Contact</th>
+          <th>Placed</th>
+          <th>Status</th>
+          <th>Total</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="rejectedOrdersTableBody"></tbody>
+    </table>
+  </div>
+</section>
+
+<div id="orderDetailsModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3 id="orderModalTitle">Order Details</h3>
+      <button class="close-btn" onclick="closeOrderModal()">Close</button>
+    </div>
+    <div id="orderDetailsContent"></div>
+  </div>
+</div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
