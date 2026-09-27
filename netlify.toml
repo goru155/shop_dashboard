@@ -1,22 +1,7 @@
 [build]
-  command = "npm install && npm run build"
-  publish = "dist"
-
-[build.environment]
-  NODE_ENV = "development"
-  NPM_FLAGS = "--production=false"
+  publish = "public"
 
 [[redirects]]
-  from = "/admin"
-  to = "/admin/login.html"
-  status = 200
-
-[[redirects]]
-  from = "/admin/"
-  to = "/admin/login.html"
-  status = 200
-
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
+  from = "/"
+  to = "/login.html"
   status = 200
