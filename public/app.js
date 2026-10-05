@@ -4,7 +4,7 @@ import {
   updateDoc, deleteDoc, getDoc, getDocs, runTransaction
 } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js";
 import {
-  getAuth, signInWithEmailAndPassword, signOut
+  getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut
 } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-auth.js";
 
 /* FIREBASE CONFIG */
@@ -20,6 +20,26 @@ const firebaseConfig = {
   measurementId: "G-3P0EWBDSLW"
 };
 
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, char => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  })[char]);
+}
+
+function inlineArg(value) {
+  return escapeHtml(JSON.stringify(String(value ?? "")));
+}
+
+function reportWriteError(action, error) {
+  console.error(`${action} failed:`, error);
+  const message = error instanceof Error ? error.message : String(error);
+  alert(`${action} failed: ${message}`);
+}
+
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
@@ -27,8 +47,21 @@ let ledgerUnsubscribe = null;
 
 /* LOGIN */
 window.login = () => {
-  signInWithEmailAndPassword(auth, "admin@shop.com", "admin@123")
-    .then(() => location.href = "inventory.html")
+  const email = document.getElementById("email")?.value.trim();
+  const password = document.getElementById("password")?.value;
+  if (!email || !password) {
+    alert("Enter your admin email and password.");
+    return;
+  }
+
+  signInWithEmailAndPassword(auth, email, password)
+    .then(async ({ user }) => {
+      if (user.email?.toLowerCase() !== "admin@shop.com") {
+        await signOut(auth);
+        throw new Error("This account is not authorized for the admin dashboard.");
+      }
+      location.href = "inventory.html";
+    })
     .catch(err => alert(err.message));
 };
 
@@ -45,6 +78,29 @@ window.logout = () => {
 
 /* CUSTOMER CACHE */
 window._customersCache = [];
+let unsubscribeCustomerCache = null;
+
+onAuthStateChanged(auth, user => {
+  if (unsubscribeCustomerCache) {
+    unsubscribeCustomerCache();
+    unsubscribeCustomerCache = null;
+  }
+
+  if (user?.email?.toLowerCase() !== "admin@shop.com" || !user.emailVerified) {
+    window._customersCache = [];
+    return;
+  }
+
+  unsubscribeCustomerCache = onSnapshot(collection(db, "customers"), snap => {
+    window._customersCache = [];
+    snap.forEach(d => {
+      const data = d.data() || {};
+      window._customersCache.push({ id: d.id, name: data.name || data.email || 'Customer' });
+    });
+  }, error => {
+    console.error("Customer cache listener failed:", error);
+  });
+});
 
 async function getCustomerProfileByEmail(email) {
   const targetEmail = String(email || '').trim().toLowerCase();
@@ -66,14 +122,6 @@ async function getCustomerProfileByEmail(email) {
   }
 }
 
-onSnapshot(collection(db, "customers"), snap => {
-  window._customersCache = [];
-  snap.forEach(d => {
-    const data = d.data() || {};
-    window._customersCache.push({ id: d.id, name: data.name || data.email || 'Customer' });
-  });
-});
-
 /* SEARCH SUGGESTIONS */
 window.showCustomerSuggestions = function (inputEl) {
   const term = inputEl.value.toLowerCase();
@@ -87,9 +135,9 @@ window.showCustomerSuggestions = function (inputEl) {
     .slice(0, 5);
 
   box.innerHTML = matches.map(c => `
-    <div onclick="selectCustomer('${rowId}','${c.id}','${c.name}')"
+    <div onclick="selectCustomer(${inlineArg(rowId)},${inlineArg(c.id)},${inlineArg(c.name)})"
           style="background:white;border:1px solid #ddd;padding:6px;cursor:pointer">
-      ${c.name}
+      ${escapeHtml(c.name)}
     </div>`).join("");
 };
 
@@ -136,14 +184,14 @@ function updateCategoryDropdowns() {
 
   if (pcategorySelect) {
     const currVal = pcategorySelect.value;
-    pcategorySelect.innerHTML = window.categoriesCache.map(c => `<option value="${c}">${c}</option>`).join("");
+    pcategorySelect.innerHTML = window.categoriesCache.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("");
     if (window.categoriesCache.includes(currVal)) pcategorySelect.value = currVal;
   }
 
   if (categoryFilterSelect) {
     const currVal = categoryFilterSelect.value;
     categoryFilterSelect.innerHTML = `<option value="all">All Categories</option>` +
-      window.categoriesCache.map(c => `<option value="${c}">${c}</option>`).join("");
+      window.categoriesCache.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("");
     if (currVal && [...categoryFilterSelect.options].some(o => o.value === currVal)) {
       categoryFilterSelect.value = currVal;
     }
@@ -334,26 +382,26 @@ function renderSellControls(p) {
       <input type="text"
         class="custSearch"
         placeholder="Search..."
-        data-row="${p.id}"
+        data-row="${escapeHtml(p.id)}"
         oninput="showCustomerSuggestions(this)">
-      <div id="suggest-${p.id}"></div>
+      <div id="suggest-${escapeHtml(p.id)}"></div>
     </td>
 
     <td>
       <div class="qtyStepper">
-        <button onclick="stepQty('${p.id}',-1)">−</button>
-        <input id="qty-${p.id}" value="1">
-        <button onclick="stepQty('${p.id}',1)">+</button>
+        <button onclick="stepQty(${inlineArg(p.id)},-1)">−</button>
+        <input id="qty-${escapeHtml(p.id)}" value="1">
+        <button onclick="stepQty(${inlineArg(p.id)},1)">+</button>
       </div>
     </td>
 
     <td>
       <div style="display: inline-flex; align-items: center; gap: 4px;">
-        <select id="pay-${p.id}">
+        <select id="pay-${escapeHtml(p.id)}">
           <option value="cash">💵 Cash</option>
           <option value="credit">📝 Credit</option>
         </select>
-        <button onclick="sellProduct('${p.id}', ${p.stock})">Sell</button>
+        <button onclick="sellProduct(${inlineArg(p.id)}, ${Number(p.stock) || 0})">Sell</button>
       </div>
     </td>`;
 }
@@ -387,23 +435,23 @@ function renderInventory(products) {
     const currentCat = p.category || "General";
     const availableCats = Array.from(new Set([...window.categoriesCache, currentCat]));
     const catOptionsHTML = availableCats.map(c =>
-      `<option value="${c}" ${c === currentCat ? 'selected' : ''}>${c}</option>`
+      `<option value="${escapeHtml(c)}" ${c === currentCat ? 'selected' : ''}>${escapeHtml(c)}</option>`
     ).join("");
 
     html += `
-      <tr class="${rowClass}" data-product-id="${p.id}" style="${!isVisible ? 'opacity: 0.65; background: #fafafa;' : ''}">
-        <td><strong>${p.name}</strong>${isLowStock ? ` <span class="low-stock-badge">Low</span>` : ""}</td>
+      <tr class="${rowClass}" data-product-id="${escapeHtml(p.id)}" style="${!isVisible ? 'opacity: 0.65; background: #fafafa;' : ''}">
+        <td><strong>${escapeHtml(p.name)}</strong>${isLowStock ? ` <span class="low-stock-badge">Low</span>` : ""}</td>
         <td>
-          <select onchange="updateProductCategory('${p.id}', this.value)">
+          <select onchange="updateProductCategory(${inlineArg(p.id)}, this.value)">
             ${catOptionsHTML}
           </select>
         </td>
-        <td>₹${p.price}</td>
-        <td class="${isLowStock ? "low-stock-cell" : ""}"><span class="stock-value">${p.stock}</span></td>
+        <td>₹${escapeHtml(p.price)}</td>
+        <td class="${isLowStock ? "low-stock-cell" : ""}"><span class="stock-value">${escapeHtml(p.stock)}</span></td>
         <td>
           <div style="display: inline-flex; align-items: center; justify-content: center; gap: 4px;">
             <label class="switch" title="${isVisible ? 'Product is Visible to customers' : 'Product is Hidden from customers'}">
-              <input type="checkbox" ${isVisible ? 'checked' : ''} onchange="toggleProductVisibility('${p.id}', ${isVisible})">
+              <input type="checkbox" ${isVisible ? 'checked' : ''} onchange="toggleProductVisibility(${inlineArg(p.id)}, ${isVisible})">
               <span class="slider"></span>
             </label>
             <span style="font-size: 11px; font-weight: 600; color: ${isVisible ? '#28a745' : '#888'};">
@@ -411,10 +459,10 @@ function renderInventory(products) {
             </span>
           </div>
         </td>
-        <td><button onclick="restockProduct('${p.id}', ${p.stock})" style="background: #28a745;">Restock</button></td>
+        <td><button onclick="restockProduct(${inlineArg(p.id)}, ${Number(p.stock) || 0})" style="background: #28a745;">Restock</button></td>
         ${renderSellControls(p)}
         <td>
-          <button onclick="deleteProduct('${p.id}')" style="background: #dc3545;">Remove</button>
+          <button onclick="deleteProduct(${inlineArg(p.id)})" style="background: #dc3545;">Remove</button>
         </td>
       </tr>`;
   });
@@ -431,7 +479,7 @@ if (inventoryList) {
     applyInventoryView();
   }, (err) => {
     console.error("Error loading inventory:", err);
-    inventoryList.innerHTML = `<tr><td colspan="10" style="padding: 20px; color: red;">Error loading inventory: ${err.message}</td></tr>`;
+    inventoryList.innerHTML = `<tr><td colspan="10" style="padding: 20px; color: red;">Error loading inventory: ${escapeHtml(err.message)}</td></tr>`;
   });
 
   productSearchInput?.addEventListener("input", applyInventoryView);
@@ -492,24 +540,31 @@ window.sellProduct = async (id, stock) => {
   const price = Number(row.children[1].innerText);
 
   const itemTotal = qty * price;
+  const inventoryRef = doc(db, "inventory", id);
+  const ledgerRef = doc(collection(db, "customers", customerId, "ledger"));
 
-  // 🔥 Update inventory first
-  await updateDoc(doc(db, "inventory", id), {
-    stock: stock - qty
-  });
+  try {
+    await runTransaction(db, async transaction => {
+      const inventorySnap = await transaction.get(inventoryRef);
+      if (!inventorySnap.exists()) throw new Error("Product no longer exists.");
 
-  // 🔥 Record ledger entry for both cash and credit sales
-  const ledgerRef = collection(db, "customers", customerId, "ledger");
+      const currentStock = Number(inventorySnap.data().stock) || 0;
+      if (qty > currentStock) throw new Error("Not enough stock available.");
 
-  await addDoc(ledgerRef, {
-    productId: id,
-    product: productName,
-    qty: qty,
-    amount: itemTotal,
-    paymentType: paymentType, // "cash" or "credit"
-    date: new Date(),
-    status: "active"
-  });
+      transaction.update(inventoryRef, { stock: currentStock - qty });
+      transaction.set(ledgerRef, {
+        productId: id,
+        product: productName,
+        qty,
+        amount: itemTotal,
+        paymentType,
+        date: new Date(),
+        status: "active"
+      });
+    });
+  } catch (error) {
+    reportWriteError("Sale", error);
+  }
 
 };
 /* =========================
@@ -624,11 +679,11 @@ if (billingTable) {
               : "✅ Cleared (Advance: ₹ " + Math.abs(total) + ")";
 
             const paidHtml = `
-              <tr id="${paidRowId}" style="background-color:#e6ffe6;">
-                <td>${cust.name}</td>
+              <tr id="${escapeHtml(paidRowId)}" style="background-color:#e6ffe6;">
+                <td>${escapeHtml(cust.name)}</td>
                 <td>${statusText}</td>
                 <td>
-                  <button onclick="showCustomerLedger('${cDoc.id}','${cust.name}')">
+                  <button onclick="showCustomerLedger(${inlineArg(cDoc.id)},${inlineArg(cust.name)})">
                     Details
                   </button>
                 </td>
@@ -652,11 +707,11 @@ if (billingTable) {
           : '';
 
         const html = `
-          <tr id="${rowId}" ${highlightStyle}>
-            <td>${cust.name}</td>
+          <tr id="${escapeHtml(rowId)}" ${highlightStyle}>
+            <td>${escapeHtml(cust.name)}</td>
             <td>₹ ${total}</td>
             <td>
-              <button onclick="showCustomerLedger('${cDoc.id}','${cust.name}')">
+              <button onclick="showCustomerLedger(${inlineArg(cDoc.id)},${inlineArg(cust.name)})">
                 Details
               </button>
             </td>
@@ -812,15 +867,15 @@ window.showCustomerLedger = async (custId, custName) => {
       });
 
       rowsHTML += `
-        <tr data-type="${r.paymentType}">
-          <td>${formattedDate}</td>
-          <td>${r.product}</td>
-          <td>${r.qty}</td>
-          <td>${r.amount}</td>
-          <td>${r.paymentType}</td>
+        <tr data-type="${escapeHtml(r.paymentType)}">
+          <td>${escapeHtml(formattedDate)}</td>
+          <td>${escapeHtml(r.product)}</td>
+          <td>${escapeHtml(r.qty)}</td>
+          <td>${escapeHtml(r.amount)}</td>
+          <td>${escapeHtml(r.paymentType)}</td>
           <td>
             ${r.qty > 0 
-              ? `<button onclick="processReturn('${id}', ${r.qty}, '${r.product}')">Return</button>` 
+              ? `<button onclick="processReturn(${inlineArg(id)}, ${Number(r.qty) || 0}, ${inlineArg(r.product)})">Return</button>` 
               : "N/A"}
           </td>
         </tr>
@@ -1023,49 +1078,48 @@ window.processReturn = async (ledgerId, maxQty, productName) => {
   }
 
   const ledgerDocRef = doc(db, "customers", currentCustomerId, "ledger", ledgerId);
-  const ledgerSnap = await getDoc(ledgerDocRef);
 
-  if (!ledgerSnap.exists()) {
-    alert("Ledger entry not found");
-    return;
-  }
+  try {
+    await runTransaction(db, async transaction => {
+      const ledgerSnap = await transaction.get(ledgerDocRef);
+      if (!ledgerSnap.exists()) throw new Error("Ledger entry not found.");
 
-  const ledgerData = ledgerSnap.data();
+      const ledgerData = ledgerSnap.data();
+      if (ledgerData.paymentType !== "credit") {
+        throw new Error("Only sold items can be returned.");
+      }
+      if (qtyToReturn > ledgerData.qty) {
+        throw new Error("Return quantity exceeds the remaining sold quantity.");
+      }
 
-  // 🔥 Only allow return for credit items
-  if (ledgerData.paymentType !== "credit") {
-    alert("Only sold items can be returned.");
-    return;
-  }
+      const inventoryDocRef = ledgerData.productId
+        ? doc(db, "inventory", ledgerData.productId)
+        : null;
+      const inventorySnap = inventoryDocRef
+        ? await transaction.get(inventoryDocRef)
+        : null;
 
-  // 🔥 Update inventory safely using productId
-  if (ledgerData.productId) {
-    const inventoryDocRef = doc(db, "inventory", ledgerData.productId);
-    const invSnap = await getDoc(inventoryDocRef);
+      if (inventorySnap?.exists()) {
+        transaction.update(inventoryDocRef, {
+          stock: (Number(inventorySnap.data().stock) || 0) + qtyToReturn
+        });
+      }
 
-    if (invSnap.exists()) {
-      await updateDoc(inventoryDocRef, {
-        stock: invSnap.data().stock + qtyToReturn
-      });
-    }
-  }
-
-  const unitRate = ledgerData.amount / ledgerData.qty;
-  const returnAmount = unitRate * qtyToReturn;
-
-  // 🔥 Partial return support
-  if (qtyToReturn === ledgerData.qty) {
-    // Full return → close entry
-    await updateDoc(ledgerDocRef, { status: "closed" });
-  } else {
-    // Partial return → reduce qty & amount
-    await updateDoc(ledgerDocRef, {
-      qty: ledgerData.qty - qtyToReturn,
-      amount: ledgerData.amount - returnAmount
+      if (qtyToReturn === ledgerData.qty) {
+        transaction.update(ledgerDocRef, { status: "closed" });
+      } else {
+        const returnAmount = (ledgerData.amount / ledgerData.qty) * qtyToReturn;
+        transaction.update(ledgerDocRef, {
+          qty: ledgerData.qty - qtyToReturn,
+          amount: ledgerData.amount - returnAmount
+        });
+      }
     });
-  }
 
-  alert(`Returned ${qtyToReturn} of ${productName} successfully!`);
+    alert(`Returned ${qtyToReturn} of ${productName} successfully!`);
+  } catch (error) {
+    reportWriteError("Return", error);
+  }
 };
 
 /* =========================
@@ -1082,11 +1136,12 @@ window.addCustomer = async function () {
     return;
   }
 
-  await addDoc(collection(db, "customers"), {
-    name: name
-  });
-
-  nameInput.value = "";
+  try {
+    await addDoc(collection(db, "customers"), { name });
+    nameInput.value = "";
+  } catch (error) {
+    reportWriteError("Add customer", error);
+  }
 
 };
 
@@ -1106,9 +1161,9 @@ if (customersTable) {
 
       html += `
         <tr>
-          <td>${c.name}</td>
+          <td>${escapeHtml(c.name)}</td>
           <td>
-            <button onclick="deleteCustomer('${d.id}')">Remove</button>
+            <button onclick="deleteCustomer(${inlineArg(d.id)})">Remove</button>
           </td>
         </tr>`;
     });
@@ -1121,7 +1176,11 @@ if (customersTable) {
 /* DELETE CUSTOMER */
 window.deleteCustomer = async (id) => {
   if (!confirm("Delete this customer?")) return;
-  await deleteDoc(doc(db, "customers", id));
+  try {
+    await deleteDoc(doc(db, "customers", id));
+  } catch (error) {
+    reportWriteError("Delete customer", error);
+  }
 };
 
 /* DELETE PRODUCT (PIN PROTECTED) */
@@ -1136,9 +1195,12 @@ window.deleteProduct = async (id) => {
 
   if (!confirm("Delete this product permanently?")) return;
 
-  await deleteDoc(doc(db, "inventory", id));
-
-  alert("Product deleted successfully");
+  try {
+    await deleteDoc(doc(db, "inventory", id));
+    alert("Product deleted successfully");
+  } catch (error) {
+    reportWriteError("Delete product", error);
+  }
 };
 
 /* QUANTITY STEPPER */
@@ -1761,36 +1823,6 @@ window.closeOrderModal = function () {
   if (modal) modal.style.display = "none";
 };
 
-async function getInventoryAvailabilityForOrder(order) {
-  const entries = Array.isArray(order?.items) ? order.items : [];
-  if (!entries.length) return true;
-
-  const inventorySnap = await getDocs(collection(db, "inventory"));
-  const inventoryMap = new Map();
-
-  inventorySnap.forEach(docSnap => {
-    const data = docSnap.data() || {};
-    inventoryMap.set(docSnap.id, { id: docSnap.id, ...data });
-    inventoryMap.set(String(data.name || '').trim().toLowerCase(), { id: docSnap.id, ...data });
-  });
-
-  for (const item of entries) {
-    const quantity = Number(item.quantity || 0);
-    if (quantity <= 0) continue;
-
-    const inventoryItem = item.productId ? inventoryMap.get(item.productId) : null;
-    const fallbackMatch = inventoryItem || inventoryMap.get(String(item.name || '').trim().toLowerCase());
-    if (!fallbackMatch) continue;
-
-    const currentStock = Number(fallbackMatch.stock || 0);
-    if (currentStock < quantity) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
 async function restoreInventoryForOrder(order) {
   if (!order || !Array.isArray(order.items) || !order.items.length) return;
 
@@ -1823,59 +1855,11 @@ async function restoreInventoryForOrder(order) {
   }
 }
 
-async function commitAcceptedOrderStock(order) {
-  if (!order || !Array.isArray(order.items) || !order.items.length) return;
-
-  const inventorySnap = await getDocs(collection(db, "inventory"));
-  const inventoryMap = new Map();
-
-  inventorySnap.forEach(docSnap => {
-    const data = docSnap.data() || {};
-    inventoryMap.set(docSnap.id, { id: docSnap.id, ...data });
-    inventoryMap.set(String(data.name || '').trim().toLowerCase(), { id: docSnap.id, ...data });
-  });
-
-  for (const item of order.items) {
-    const quantity = Number(item.quantity || 0);
-    if (quantity <= 0) continue;
-
-    const productId = item.productId || item.id;
-    const inventoryEntry = productId ? inventoryMap.get(productId) : null;
-    const fallbackEntry = inventoryEntry || inventoryMap.get(String(item.name || '').trim().toLowerCase());
-
-    if (!fallbackEntry) continue;
-
-    const inventoryRef = doc(db, "inventory", fallbackEntry.id);
-
-    await runTransaction(db, async (transaction) => {
-      const currentSnap = await transaction.get(inventoryRef);
-      if (!currentSnap.exists()) return;
-
-      const currentStock = Number(currentSnap.data()?.stock || 0);
-      const nextStock = Math.max(0, currentStock - quantity);
-      transaction.update(inventoryRef, {
-        stock: nextStock,
-        updatedAt: new Date()
-      });
-    });
-  }
-}
-
 window.acceptOrder = async function (orderId) {
   const order = window.ordersCache.find(item => (item.orderId || item.id) === orderId);
   if (!order) return;
 
   try {
-    const hasStockAvailable = await getInventoryAvailabilityForOrder(order);
-    if (!hasStockAvailable) {
-      alert("This order cannot be accepted because the inventory for one or more items has already been exhausted.");
-      return;
-    }
-
-    if (order.items && Array.isArray(order.items)) {
-      await commitAcceptedOrderStock(order);
-    }
-
     const customer = order.customer || {};
     const customerName = normalizeCustomerName(customer.name, customer.email);
     const customerPhone = customer.contact || "";
@@ -1916,12 +1900,13 @@ window.acceptOrder = async function (orderId) {
     if (order.id) {
       await updateDoc(doc(db, "orders", order.id), {
         orderStatus: "accepted",
+        inventoryDeducted: false,
         acceptedAt: new Date(),
         acceptedBy: "admin"
       });
     }
 
-    alert("Order accepted and inventory updated.");
+    alert("Order accepted. Inventory deduction is disabled for testing.");
   } catch (error) {
     console.error("Failed to accept order:", error);
     alert("Unable to accept this order right now.");
@@ -1941,7 +1926,7 @@ window.rejectOrder = async function (orderId) {
   try {
     if (order.id) {
       const currentStatus = normalizeOrderStatus(order.orderStatus);
-      if (currentStatus === "accepted") {
+      if (currentStatus === "accepted" && order.inventoryDeducted !== false) {
         await restoreInventoryForOrder(order);
       }
 
@@ -1979,8 +1964,8 @@ window.showOrderDetails = function (orderId) {
   const statusLabel = formatOrderStatus(order.orderStatus);
   const itemRows = (order.items || []).map(item => `
     <tr>
-      <td>${item.name || "Product"}</td>
-      <td>${item.quantity || 0}</td>
+      <td>${escapeHtml(item.name || "Product")}</td>
+      <td>${escapeHtml(item.quantity || 0)}</td>
       <td>${formatCurrency(item.unitPrice || 0)}</td>
       <td>${formatCurrency(item.itemTotal || 0)}</td>
     </tr>
@@ -1992,25 +1977,25 @@ window.showOrderDetails = function (orderId) {
     <div class="details-grid">
       <div class="detail-box">
         <h4>Customer</h4>
-        <div>${displayCustomerName}</div>
+        <div>${escapeHtml(displayCustomerName)}</div>
       </div>
       <div class="detail-box">
         <h4>Contact</h4>
-        <div>${order.customer?.contact || "N/A"}</div>
+        <div>${escapeHtml(order.customer?.contact || "N/A")}</div>
       </div>
       <div class="detail-box">
         <h4>Placed</h4>
-        <div>${formatOrderDate(order.timestamp || order.createdAt || order.updatedAt)}</div>
+        <div>${escapeHtml(formatOrderDate(order.timestamp || order.createdAt || order.updatedAt))}</div>
       </div>
       <div class="detail-box">
         <h4>Status</h4>
-        <div>${statusLabel}</div>
+        <div>${escapeHtml(statusLabel)}</div>
       </div>
     </div>
 
     <div class="detail-box" style="margin-bottom: 16px;">
       <h4>Delivery Address</h4>
-      <div>${order.customer?.deliveryAddress || "No address provided"}</div>
+      <div>${escapeHtml(order.customer?.deliveryAddress || "No address provided")}</div>
     </div>
 
     <table class="rows-table">
@@ -2063,7 +2048,7 @@ function initOrdersPage() {
       tableBody.innerHTML = `
         <tr>
           <td colspan="7" style="text-align: center; padding: 24px; color: #64748b;">
-            No ${statusFilter} orders in the log.
+            No ${escapeHtml(statusFilter)} orders in the log.
           </td>
         </tr>
       `;
@@ -2092,17 +2077,17 @@ function initOrdersPage() {
 
       return `
         <tr>
-          <td>${orderKey}</td>
-          <td>${displayCustomerName}</td>
-          <td>${order.customer?.contact || "N/A"}</td>
-          <td>${formatOrderDate(order.timestamp || order.createdAt || order.updatedAt)}</td>
-          <td><span class="status-pill" style="${style}">${status}</span></td>
+          <td>${escapeHtml(orderKey)}</td>
+          <td>${escapeHtml(displayCustomerName)}</td>
+          <td>${escapeHtml(order.customer?.contact || "N/A")}</td>
+          <td>${escapeHtml(formatOrderDate(order.timestamp || order.createdAt || order.updatedAt))}</td>
+          <td><span class="status-pill" style="${style}">${escapeHtml(status)}</span></td>
           <td>${formatCurrency(order.pricing?.grandTotal || 0)}</td>
           <td>
-            <button class="action-btn" onclick="showOrderDetails('${orderKey}')">View</button>
+            <button class="action-btn" onclick="showOrderDetails(${inlineArg(orderKey)})">View</button>
             ${statusFilter === "pending" ? `
-              <button class="action-btn" onclick="acceptOrder('${orderKey}')" ${isAccepted ? 'disabled' : ''}>Accept</button>
-              <button class="action-btn delete" onclick="rejectOrder('${orderKey}')" ${isRejected ? 'disabled' : ''}>Reject</button>
+              <button class="action-btn" onclick="acceptOrder(${inlineArg(orderKey)})" ${isAccepted ? 'disabled' : ''}>Accept</button>
+              <button class="action-btn delete" onclick="rejectOrder(${inlineArg(orderKey)})" ${isRejected ? 'disabled' : ''}>Reject</button>
             ` : ""}
           </td>
         </tr>
@@ -2148,14 +2133,49 @@ function initOrdersPage() {
 
   renderOrders(mergeOrders([]));
 
-  onSnapshot(collection(db, "orders"), async (snapshot) => {
-    const firestoreOrders = snapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
-    await normalizeExistingOrderNames(firestoreOrders);
-    renderOrders(mergeOrders(firestoreOrders));
-  }, (error) => {
-    console.error("Orders snapshot failed:", error);
-    renderOrders(mergeOrders([]));
+  let unsubscribeOrders = null;
+  const orderTables = [pendingTableBody, acceptedTableBody, rejectedTableBody];
+  const showOrdersMessage = (message, color = "#64748b") => {
+    orderTables.forEach(tableBody => {
+      const row = document.createElement("tr");
+      const cell = document.createElement("td");
+      cell.colSpan = 7;
+      cell.style.cssText = `text-align:center;padding:24px;color:${color};`;
+      cell.textContent = message;
+      row.appendChild(cell);
+      tableBody.replaceChildren(row);
+    });
+  };
+
+  const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+    if (unsubscribeOrders) {
+      unsubscribeOrders();
+      unsubscribeOrders = null;
+    }
+
+    if (!user) {
+      window.ordersCache = [];
+      showOrdersMessage("Sign in to load orders.");
+      return;
+    }
+
+    unsubscribeOrders = onSnapshot(collection(db, "orders"), async (snapshot) => {
+      const firestoreOrders = snapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
+      await normalizeExistingOrderNames(firestoreOrders);
+      renderOrders(mergeOrders(firestoreOrders));
+    }, (error) => {
+      console.error("Orders snapshot failed:", error);
+      showOrdersMessage(
+        `Unable to load orders (${error.code || "unknown Firestore error"}). Check Firestore rules and the selected database.`,
+        "#b91c1c"
+      );
+    });
   });
+
+  window.addEventListener("pagehide", () => {
+    unsubscribeAuth();
+    if (unsubscribeOrders) unsubscribeOrders();
+  }, { once: true });
 }
 
 if (document.getElementById("pendingOrdersTableBody")) {
