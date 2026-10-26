@@ -11,6 +11,7 @@ import {
 const env = typeof import.meta !== "undefined" && import.meta.env ? import.meta.env : {};
 
 const firebaseConfig = {
+  //MAIN
   apiKey: "AIzaSyAawUopX1lromd5nFeMPoogEXFzLZ7ZnXM",
   authDomain: "shopportal-f6630.firebaseapp.com",
   projectId: "shopportal-f6630",
@@ -18,6 +19,15 @@ const firebaseConfig = {
   messagingSenderId: "843668522089",
   appId: "1:843668522089:web:cfdd7548303ced6df04ef8",
   measurementId: "G-3P0EWBDSLW"
+  
+  //TEST
+  //apiKey: "AIzaSyB9hIGLO6raFu3QAyMlHS__s7Q-xCW0JRo",
+  //authDomain: "shop-dash-1cb86.firebaseapp.com",
+  //projectId: "shop-dash-1cb86",
+  //storageBucket: "shop-dash-1cb86.firebasestorage.app",
+  //messagingSenderId: "574305844517",
+  //appId: "1:574305844517:web:b5aa3d4940e3face4f6ecc",
+  //measurementId: "G-PZMDJVD07C"
 };
 
 function escapeHtml(value) {
@@ -1859,6 +1869,12 @@ window.acceptOrder = async function (orderId) {
   const order = window.ordersCache.find(item => (item.orderId || item.id) === orderId);
   if (!order) return;
 
+  const currentStatus = normalizeOrderStatus(order.orderStatus);
+  if (currentStatus === "accepted" && order.inventoryDeducted === true) {
+    alert("This order has already been accepted and inventory has been deducted.");
+    return;
+  }
+
   try {
     const customer = order.customer || {};
     const customerName = normalizeCustomerName(customer.name, customer.email);
@@ -1878,38 +1894,144 @@ window.acceptOrder = async function (orderId) {
       }
     });
 
-    if (targetCustomerId) {
-      await updateDoc(doc(db, "customers", targetCustomerId), {
-        name: customerName,
-        contact: customerPhone,
-        email: customerEmail,
-        address: customerAddress,
-        updatedAt: new Date()
-      });
-    } else {
-      await addDoc(collection(db, "customers"), {
-        name: customerName,
-        contact: customerPhone,
-        email: customerEmail,
-        address: customerAddress,
-        createdAt: new Date(),
-        source: "accepted_order"
-      });
+    const inventorySnap = await getDocs(collection(db, "inventory"));
+    const inventoryMap = new Map();
+
+    inventorySnap.forEach(docSnap => {
+      const data = docSnap.data() || {};
+      const record = { id: docSnap.id, ...data };
+      inventoryMap.set(docSnap.id, record);
+      const cleanName = String(data.name || "").trim().toLowerCase();
+      if (cleanName) {
+        inventoryMap.set(cleanName, record);
+      }
+    });
+
+    const itemsToDeduct = new Map();
+    const missingItems = [];
+
+    for (const item of (Array.isArray(order.items) ? order.items : [])) {
+      const quantity = Number(item.quantity || 0);
+      if (quantity <= 0) continue;
+
+      const matched = (item.productId ? inventoryMap.get(item.productId) : null) ||
+                      inventoryMap.get(String(item.name || "").trim().toLowerCase());
+
+      if (!matched) {
+        missingItems.push(item.name || item.productId || "Unknown product");
+        continue;
+      }
+
+      if (itemsToDeduct.has(matched.id)) {
+        itemsToDeduct.get(matched.id).quantity += quantity;
+      } else {
+        itemsToDeduct.set(matched.id, {
+          id: matched.id,
+          ref: doc(db, "inventory", matched.id),
+          name: matched.name || item.name || "Product",
+          quantity: quantity
+        });
+      }
     }
 
-    if (order.id) {
-      await updateDoc(doc(db, "orders", order.id), {
-        orderStatus: "accepted",
-        inventoryDeducted: false,
-        acceptedAt: new Date(),
-        acceptedBy: "admin"
-      });
+    if (missingItems.length > 0) {
+      alert(`Cannot accept order: Product(s) not found in inventory (${missingItems.join(", ")}).`);
+      return;
     }
 
-    alert("Order accepted. Inventory deduction is disabled for testing.");
+    await runTransaction(db, async transaction => {
+      // 1. Read phase: Order doc check
+      const orderRef = order.id ? doc(db, "orders", order.id) : null;
+      if (orderRef) {
+        const orderDocSnap = await transaction.get(orderRef);
+        if (orderDocSnap.exists()) {
+          const liveOrder = orderDocSnap.data() || {};
+          if (liveOrder.inventoryDeducted === true) {
+            throw new Error("ORDER_ALREADY_DEDUCTED");
+          }
+        }
+      }
+
+      // 2. Read phase: Existing customer doc
+      const customerRef = targetCustomerId
+        ? doc(db, "customers", targetCustomerId)
+        : doc(collection(db, "customers"));
+
+      if (targetCustomerId) {
+        await transaction.get(customerRef);
+      }
+
+      // 3. Read phase: Live stock check for all products
+      const stockUpdates = [];
+      for (const item of itemsToDeduct.values()) {
+        const invSnap = await transaction.get(item.ref);
+        if (!invSnap.exists()) {
+          throw new Error(`Product "${item.name}" no longer exists in inventory.`);
+        }
+        const currentStock = Number(invSnap.data()?.stock || 0);
+        if (currentStock < item.quantity) {
+          throw new Error(`Insufficient stock for "${item.name}". Available: ${currentStock}, Required: ${item.quantity}`);
+        }
+        stockUpdates.push({
+          ref: item.ref,
+          newStock: currentStock - item.quantity
+        });
+      }
+
+      // 4. Write phase: Deduct inventory stock
+      for (const update of stockUpdates) {
+        transaction.update(update.ref, {
+          stock: update.newStock,
+          updatedAt: new Date()
+        });
+      }
+
+      // 5. Write phase: Create or update customer profile
+      if (targetCustomerId) {
+        transaction.update(customerRef, {
+          name: customerName,
+          contact: customerPhone,
+          email: customerEmail,
+          address: customerAddress,
+          updatedAt: new Date()
+        });
+      } else {
+        transaction.set(customerRef, {
+          name: customerName,
+          contact: customerPhone,
+          email: customerEmail,
+          address: customerAddress,
+          createdAt: new Date(),
+          source: "accepted_order"
+        });
+      }
+
+      // 6. Write phase: Mark order accepted and inventoryDeducted: true
+      if (orderRef) {
+        transaction.update(orderRef, {
+          orderStatus: "accepted",
+          inventoryDeducted: true,
+          acceptedAt: new Date(),
+          acceptedBy: "admin",
+          updatedAt: new Date()
+        });
+      }
+    });
+
+    order.orderStatus = "accepted";
+    order.inventoryDeducted = true;
+    alert("Order accepted and inventory deducted successfully.");
   } catch (error) {
-    console.error("Failed to accept order:", error);
-    alert("Unable to accept this order right now.");
+    if (error.message === "ORDER_ALREADY_DEDUCTED") {
+      order.orderStatus = "accepted";
+      order.inventoryDeducted = true;
+      alert("This order has already been accepted and inventory was deducted.");
+    } else if (error.message && error.message.includes("Insufficient stock")) {
+      alert(`Cannot accept order: ${error.message}`);
+    } else {
+      console.error("Failed to accept order:", error);
+      alert(`Unable to accept this order: ${error.message || error}`);
+    }
   }
 };
 
@@ -1932,10 +2054,13 @@ window.rejectOrder = async function (orderId) {
 
       await updateDoc(doc(db, "orders", order.id), {
         orderStatus: "rejected",
+        inventoryDeducted: false,
         rejectedAt: new Date(),
         rejectedBy: "admin",
         updatedAt: new Date()
       });
+      order.orderStatus = "rejected";
+      order.inventoryDeducted = false;
       alert("Order marked as rejected and inventory restored if it had already been reduced.");
     } else {
       alert("This local order was only marked as rejected in the admin view.");
