@@ -1,34 +1,45 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
 import {
   getFirestore, collection, addDoc, onSnapshot, doc,
-  updateDoc, deleteDoc, getDoc, getDocs, runTransaction
+  updateDoc, deleteDoc, getDoc, getDocs, runTransaction, setDoc
 } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js";
 import {
   getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut
 } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-auth.js";
 
 /* FIREBASE CONFIG */
-const env = typeof import.meta !== "undefined" && import.meta.env ? import.meta.env : {};
+const env = (typeof window !== "undefined" && window.__ENV__) ? window.__ENV__ : {};
+
+const ADMIN_EMAIL = env.VITE_ADMIN_EMAIL || "admin@shop.com";
 
 const firebaseConfig = {
-  //MAIN
-  apiKey: "AIzaSyAawUopX1lromd5nFeMPoogEXFzLZ7ZnXM",
-  authDomain: "shopportal-f6630.firebaseapp.com",
-  projectId: "shopportal-f6630",
-  storageBucket: "shopportal-f6630.firebasestorage.app",
-  messagingSenderId: "843668522089",
-  appId: "1:843668522089:web:cfdd7548303ced6df04ef8",
-  measurementId: "G-3P0EWBDSLW"
-  
-  //TEST
-  //apiKey: "AIzaSyB9hIGLO6raFu3QAyMlHS__s7Q-xCW0JRo",
-  //authDomain: "shop-dash-1cb86.firebaseapp.com",
-  //projectId: "shop-dash-1cb86",
-  //storageBucket: "shop-dash-1cb86.firebasestorage.app",
-  //messagingSenderId: "574305844517",
-  //appId: "1:574305844517:web:b5aa3d4940e3face4f6ecc",
-  //measurementId: "G-PZMDJVD07C"
+  apiKey: env.VITE_FIREBASE_API_KEY,
+  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: env.VITE_FIREBASE_APP_ID,
+  measurementId: env.VITE_FIREBASE_MEASUREMENT_ID,
 };
+
+const requiredConfigKeys = [
+  "apiKey",
+  "authDomain",
+  "projectId",
+  "storageBucket",
+  "messagingSenderId",
+  "appId"
+];
+
+const missingConfigKeys = requiredConfigKeys.filter(
+  (key) => !firebaseConfig[key] || !String(firebaseConfig[key]).trim()
+);
+
+if (missingConfigKeys.length > 0) {
+  console.warn(
+    `Missing Firebase configuration values: ${missingConfigKeys.join(", ")}. Add them to your .env file using VITE_FIREBASE_* variables.`
+  );
+}
 
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, char => ({
@@ -66,7 +77,7 @@ window.login = () => {
 
   signInWithEmailAndPassword(auth, email, password)
     .then(async ({ user }) => {
-      if (user.email?.toLowerCase() !== "admin@shop.com") {
+      if (user.email?.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
         await signOut(auth);
         throw new Error("This account is not authorized for the admin dashboard.");
       }
@@ -96,7 +107,7 @@ onAuthStateChanged(auth, user => {
     unsubscribeCustomerCache = null;
   }
 
-  if (user?.email?.toLowerCase() !== "admin@shop.com" || !user.emailVerified) {
+  if (user?.email?.toLowerCase() !== ADMIN_EMAIL.toLowerCase() || !user.emailVerified) {
     window._customersCache = [];
     return;
   }
@@ -2122,6 +2133,13 @@ window.showOrderDetails = function (orderId) {
       <h4>Delivery Address</h4>
       <div>${escapeHtml(order.customer?.deliveryAddress || "No address provided")}</div>
     </div>
+    ${order.customer?.location ? `
+    <div class="detail-box" style="margin-bottom: 16px; background: #f0fdf4; border: 1px solid #bbf7d0;">
+      <h4 style="color: #166534;">Verified GPS Distance</h4>
+      <div style="font-weight: 700; color: #166534;">📍 ${escapeHtml(order.customer.location.distanceKm)} km away from shop</div>
+      <div style="font-size: 12px; color: #15803d; margin-top: 3px;">Coords: ${escapeHtml(order.customer.location.lat?.toFixed ? order.customer.location.lat.toFixed(4) : order.customer.location.lat)}, ${escapeHtml(order.customer.location.lng?.toFixed ? order.customer.location.lng.toFixed(4) : order.customer.location.lng)}</div>
+    </div>` : ""}
+
 
     <table class="rows-table">
       <thead>
@@ -2305,4 +2323,116 @@ function initOrdersPage() {
 
 if (document.getElementById("pendingOrdersTableBody")) {
   initOrdersPage();
+}
+
+/* ================= SHOP LOCATION & GEOFENCE SETTINGS ================= */
+let unsubscribeShopSettings = null;
+function initShopLocationSettings() {
+  const shopLatInput = document.getElementById("shopLat");
+  const shopLngInput = document.getElementById("shopLng");
+  const shopRadiusInput = document.getElementById("shopRadius");
+  const shopAddressInput = document.getElementById("shopAddress");
+  const statusEl = document.getElementById("shopLocationStatus");
+  if (!shopLatInput && !shopRadiusInput) return;
+  const shopDocRef = doc(db, "settings", "shop");
+  unsubscribeShopSettings = onSnapshot(shopDocRef, (docSnap) => {
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      if (shopLatInput && data.lat !== undefined) shopLatInput.value = data.lat;
+      if (shopLngInput && data.lng !== undefined) shopLngInput.value = data.lng;
+      if (shopRadiusInput && data.radiusKm !== undefined) shopRadiusInput.value = data.radiusKm;
+      if (shopAddressInput && data.address !== undefined) shopAddressInput.value = data.address;
+      if (statusEl) {
+        statusEl.style.color = "#16a34a";
+        statusEl.textContent = "📍 Active boundary: " + (data.radiusKm || 5) + " km around (" + data.lat + ", " + data.lng + ")";
+        const badge = document.getElementById("activeBoundaryBadge");
+        if (badge) badge.textContent = "Active: " + (data.radiusKm || 5) + " km radius";
+      }
+    } else {
+      if (shopLatInput && !shopLatInput.value) shopLatInput.value = 28.6139;
+      if (shopLngInput && !shopLngInput.value) shopLngInput.value = 77.2090;
+      if (shopRadiusInput && !shopRadiusInput.value) shopRadiusInput.value = 5;
+      if (statusEl) {
+        statusEl.style.color = "#6b3fa0";
+        statusEl.textContent = "📍 Using default location (28.6139, 77.2090, 5 km). Save to update.";
+      }
+    }
+  }, (err) => {
+    console.warn("Unable to load shop location settings:", err);
+  });
+}
+
+window.detectAdminGPS = function () {
+  const statusEl = document.getElementById("shopLocationStatus");
+  if (!navigator.geolocation) {
+    alert("Geolocation is not supported by your browser.");
+    return;
+  }
+  if (statusEl) {
+    statusEl.style.color = "#0284c7";
+    statusEl.textContent = "📡 Detecting device GPS coordinates...";
+  }
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      const lat = Math.round(pos.coords.latitude * 100000) / 100000;
+      const lng = Math.round(pos.coords.longitude * 100000) / 100000;
+      const latEl = document.getElementById("shopLat");
+      const lngEl = document.getElementById("shopLng");
+      if (latEl) latEl.value = lat;
+      if (lngEl) lngEl.value = lng;
+      if (statusEl) {
+        statusEl.style.color = "#16a34a";
+        statusEl.textContent = "✅ GPS coordinates detected: " + lat + ", " + lng;
+      }
+    },
+    (err) => {
+      if (statusEl) {
+        statusEl.style.color = "#dc2626";
+        statusEl.textContent = "❌ GPS Error: " + err.message;
+      }
+    },
+    { enableHighAccuracy: true, timeout: 10000 }
+  );
+};
+
+window.saveShopLocation = async function () {
+  const statusEl = document.getElementById("shopLocationStatus");
+  const lat = parseFloat(document.getElementById("shopLat")?.value);
+  const lng = parseFloat(document.getElementById("shopLng")?.value);
+  const radiusKm = parseFloat(document.getElementById("shopRadius")?.value);
+  const address = document.getElementById("shopAddress")?.value?.trim() || "";
+  if (isNaN(lat) || isNaN(lng) || isNaN(radiusKm) || radiusKm <= 0) {
+    alert("Please enter valid numerical coordinates and a positive radius (km).");
+    return;
+  }
+  if (statusEl) {
+    statusEl.style.color = "#0284c7";
+    statusEl.textContent = "💾 Saving shop boundary settings...";
+  }
+  try {
+    const shopDocRef = doc(db, "settings", "shop");
+    await setDoc(shopDocRef, {
+      lat,
+      lng,
+      radiusKm,
+      address,
+      updatedAt: new Date().toISOString(),
+      updatedBy: auth.currentUser?.email || ADMIN_EMAIL
+    });
+    if (statusEl) {
+      statusEl.style.color = "#16a34a";
+      statusEl.textContent = "✅ Shop location & " + radiusKm + " km delivery boundary saved successfully!";
+    }
+  } catch (err) {
+    console.error("Save shop location failed:", err);
+    if (statusEl) {
+      statusEl.style.color = "#dc2626";
+      statusEl.textContent = "❌ Failed to save: " + err.message;
+    }
+    reportWriteError("Save Shop Location", err);
+  }
+};
+
+if (document.getElementById("shopLat") || document.getElementById("shopRadius")) {
+  initShopLocationSettings();
 }

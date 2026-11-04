@@ -7,6 +7,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="nav.css">
 
   <style>
 
@@ -16,16 +17,6 @@
       font-family: "Segoe UI", Arial, sans-serif;
       background: #f5f6fa;
       box-sizing: border-box;
-    }
-
-    header {
-      background: #6b3fa0;
-      color: white;
-      padding: 15px;
-      font-size: 20px;
-      text-align: center;
-      border-radius: 10px;
-      margin-bottom: 20px;
     }
 
     section {
@@ -54,6 +45,7 @@
       border: 1px solid #ccc;
       box-sizing: border-box;
       font-size: 14px;
+      font-family: "Segoe UI", Arial, sans-serif;
     }
 
     button {
@@ -89,18 +81,18 @@
     @media (min-width: 768px) {
 
       section {
-        max-width: 700px;
+        max-width: 750px;
         margin-left: auto;
         margin-right: auto;
       }
 
       section input,
       section select {
-        max-width: 400px;
+        max-width: 100%;
       }
 
       section button {
-        max-width: 200px;
+        max-width: 220px;
       }
 
     }
@@ -110,7 +102,53 @@
 
 <body>
 
-<header>Shop Portal</header>
+<header>
+  <h3>Shop Admin</h3>
+  <nav>
+    <a href="dashboard.html" style="font-weight: 700; text-decoration: underline;">Dashboard</a>
+    <a href="inventory.html">Inventory</a>
+    <a href="customers.html">Customers</a>
+    <a href="billing.html">Billing</a>
+    <a href="orders.html">Orders</a>
+    <a href="#" onclick="logout()" style="color: #ffcccc;">Logout</a>
+  </nav>
+</header>
+
+<section style="border-top: 4px solid #6b3fa0;">
+  <h3>📍 Shop Location & Delivery Boundary (Geofencing)</h3>
+  <div style="background: #fafafa; border: 1px solid #eee; padding: 16px; border-radius: 8px;">
+    <p style="font-size: 13px; color: #555; margin-top: 0; margin-bottom: 15px; line-height: 1.4;">
+      Configure the shop's physical GPS location and maximum delivery radius. Customers whose delivery location exceeds this radius will be blocked during storefront checkout.
+    </p>
+
+    <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: #333;">Shop Address / Landmark</label>
+    <input id="shopAddress" placeholder="e.g. Shop No. 12, Main Market">
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+      <div>
+        <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: #333;">Shop Latitude</label>
+        <input id="shopLat" type="number" step="any" placeholder="e.g. 28.6139">
+      </div>
+      <div>
+        <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: #333;">Shop Longitude</label>
+        <input id="shopLng" type="number" step="any" placeholder="e.g. 77.2090">
+      </div>
+    </div>
+
+    <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: #333;">Delivery Radius (km)</label>
+    <input id="shopRadius" type="number" min="0.1" step="0.5" placeholder="e.g. 5">
+
+    <div style="display: flex; gap: 10px; margin-top: 8px; flex-wrap: wrap;">
+      <button type="button" onclick="detectAdminGPS()" style="background: #f1f5f9; color: #333; border: 1px solid #ccc; max-width: 220px;">
+        📡 Detect My GPS Location
+      </button>
+      <button type="button" onclick="saveShopLocation()" style="background: #6b3fa0; color: white; max-width: 200px;">
+        💾 Save Shop Location
+      </button>
+    </div>
+    <div id="shopLocationStatus" style="margin-top: 10px; font-size: 13px; font-weight: 600;"></div>
+  </div>
+</section>
 
 <section>
   <h3>Inventory</h3>
