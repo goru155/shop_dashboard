@@ -9,6 +9,17 @@ const __dirname = path.dirname(__filename);
 
 // Custom plugin to serve the /public folder for admin access in dev and copy to dist on build
 function adminFolderPlugin(clientEnv) {
+  function syncEnvFile() {
+    const envFilePath = path.resolve(__dirname, 'public', 'env.js');
+    const envContent = `// Auto-generated from .env - do not edit manually or commit to version control\nwindow.__ENV__ = ${JSON.stringify(clientEnv, null, 2)};\n`;
+    try {
+      fs.writeFileSync(envFilePath, envContent, 'utf-8');
+    } catch (_) {}
+  }
+
+  // Ensure public/env.js is in sync with .env
+  syncEnvFile();
+
   function injectEnvToScript(content) {
     const envInjection = `const env = Object.assign(${JSON.stringify(clientEnv)}, (typeof window !== "undefined" && window.__ENV__) ? window.__ENV__ : {});`;
     return content.replace(/const env =[^;]*;\r?\n/, `${envInjection}\n`);
@@ -16,13 +27,23 @@ function adminFolderPlugin(clientEnv) {
 
   return {
     name: 'serve-admin-public-folder',
+    buildStart() {
+      syncEnvFile();
+    },
     configureServer(server) {
+      syncEnvFile();
       server.middlewares.use((req, res, next) => {
         const parsedUrl = req.url.split('?')[0];
         
         if (parsedUrl === '/admin' || parsedUrl === '/admin/') {
           res.writeHead(302, { Location: '/admin/login.html' });
           res.end();
+          return;
+        }
+
+        if (parsedUrl === '/env.js' || parsedUrl === '/admin/env.js') {
+          res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+          res.end(`window.__ENV__ = ${JSON.stringify(clientEnv, null, 2)};\n`);
           return;
         }
 
@@ -66,6 +87,7 @@ function adminFolderPlugin(clientEnv) {
       });
     },
     closeBundle() {
+      syncEnvFile();
       // Copy public admin folder to dist/admin on build
       const publicSrc = path.resolve(__dirname, 'public');
       const adminDest = path.resolve(__dirname, 'dist', 'admin');
@@ -93,6 +115,9 @@ function adminFolderPlugin(clientEnv) {
         const content = fs.readFileSync(distAppJs, 'utf-8');
         fs.writeFileSync(distAppJs, injectEnvToScript(content), 'utf-8');
       }
+      // Also ensure dist/env.js exists
+      const distEnvJs = path.resolve(__dirname, 'dist', 'env.js');
+      fs.writeFileSync(distEnvJs, `window.__ENV__ = ${JSON.stringify(clientEnv, null, 2)};\n`, 'utf-8');
     }
   };
 }
