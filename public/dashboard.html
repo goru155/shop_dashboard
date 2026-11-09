@@ -122,7 +122,12 @@
     </p>
 
     <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: #333;">Shop Address / Landmark</label>
-    <input id="shopAddress" placeholder="e.g. Shop No. 12, Main Market">
+    <div style="display: flex; gap: 8px; margin-bottom: 12px; align-items: center;">
+      <input id="shopAddress" placeholder="e.g. Shop No. 12, Main Market" style="margin-bottom: 0; flex: 1;">
+      <button type="button" onclick="geocodeAdminAddress()" style="background: #2563eb; color: white; border: none; padding: 9px 14px; border-radius: 6px; cursor: pointer; white-space: nowrap; font-size: 13px; font-weight: 600;">
+        🔍 Locate Address
+      </button>
+    </div>
 
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
       <div>
@@ -136,7 +141,7 @@
     </div>
 
     <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: #333;">Delivery Radius (km)</label>
-    <input id="shopRadius" type="number" min="0.1" step="0.5" placeholder="e.g. 5">
+    <input id="shopRadius" type="number" min="0.1" step="0.5" value="5" placeholder="e.g. 5">
 
     <div style="display: flex; gap: 10px; margin-top: 8px; flex-wrap: wrap;">
       <button type="button" onclick="detectAdminGPS()" style="background: #f1f5f9; color: #333; border: 1px solid #ccc; max-width: 220px;">

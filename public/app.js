@@ -2133,12 +2133,24 @@ window.showOrderDetails = function (orderId) {
       <h4>Delivery Address</h4>
       <div>${escapeHtml(order.customer?.deliveryAddress || "No address provided")}</div>
     </div>
-    ${order.customer?.location ? `
-    <div class="detail-box" style="margin-bottom: 16px; background: #f0fdf4; border: 1px solid #bbf7d0;">
-      <h4 style="color: #166534;">Verified GPS Distance</h4>
-      <div style="font-weight: 700; color: #166534;">📍 ${escapeHtml(order.customer.location.distanceKm)} km away from shop</div>
-      <div style="font-size: 12px; color: #15803d; margin-top: 3px;">Coords: ${escapeHtml(order.customer.location.lat?.toFixed ? order.customer.location.lat.toFixed(4) : order.customer.location.lat)}, ${escapeHtml(order.customer.location.lng?.toFixed ? order.customer.location.lng.toFixed(4) : order.customer.location.lng)}</div>
-    </div>` : ""}
+    ${order.customer?.location ? (() => {
+      const cDist = typeof order.customer.location.distanceKm === "number" ? order.customer.location.distanceKm : parseFloat(order.customer.location.distanceKm);
+      const maxR = (typeof currentActiveShopSettings !== "undefined" && currentActiveShopSettings.radiusKm) || 5;
+      const isOutOfZone = !isNaN(cDist) && cDist > maxR;
+      const bg = isOutOfZone ? "#fef2f2" : "#f0fdf4";
+      const border = isOutOfZone ? "#fecaca" : "#bbf7d0";
+      const color = isOutOfZone ? "#991b1b" : "#166534";
+      const title = isOutOfZone ? "⚠️ Delivery Boundary Warning" : "Verified GPS Distance";
+      const label = isOutOfZone
+        ? "⚠️ Out of Delivery Area (" + escapeHtml(cDist) + " km vs max " + maxR + " km)"
+        : "📍 " + escapeHtml(cDist) + " km away from shop (Within Zone)";
+      return `
+    <div class="detail-box" style="margin-bottom: 16px; background: ${bg}; border: 1px solid ${border};">
+      <h4 style="color: ${color};">${title}</h4>
+      <div style="font-weight: 700; color: ${color};">${label}</div>
+      <div style="font-size: 12px; color: ${isOutOfZone ? '#b91c1c' : '#15803d'}; margin-top: 3px;">Coords: ${escapeHtml(order.customer.location.lat?.toFixed ? order.customer.location.lat.toFixed(4) : order.customer.location.lat)}, ${escapeHtml(order.customer.location.lng?.toFixed ? order.customer.location.lng.toFixed(4) : order.customer.location.lng)}</div>
+    </div>`;
+    })() : ""}
 
 
     <table class="rows-table">
@@ -2326,6 +2338,17 @@ if (document.getElementById("pendingOrdersTableBody")) {
 }
 
 /* ================= SHOP LOCATION & GEOFENCE SETTINGS ================= */
+const DEFAULT_SHOP_LAT = parseFloat(window.__ENV__?.VITE_SHOP_LAT) || 28.6139;
+const DEFAULT_SHOP_LNG = parseFloat(window.__ENV__?.VITE_SHOP_LNG) || 77.2090;
+const DEFAULT_SHOP_RADIUS = parseFloat(window.__ENV__?.VITE_DELIVERY_RADIUS_KM) || 5;
+
+let currentActiveShopSettings = {
+  lat: DEFAULT_SHOP_LAT,
+  lng: DEFAULT_SHOP_LNG,
+  radiusKm: DEFAULT_SHOP_RADIUS,
+  address: "Shop Physical Store"
+};
+
 let unsubscribeShopSettings = null;
 function initShopLocationSettings() {
   const shopLatInput = document.getElementById("shopLat");
@@ -2338,29 +2361,234 @@ function initShopLocationSettings() {
   unsubscribeShopSettings = onSnapshot(shopDocRef, (docSnap) => {
     if (docSnap.exists()) {
       const data = docSnap.data();
+      currentActiveShopSettings = {
+        lat: typeof data.lat === "number" ? data.lat : DEFAULT_SHOP_LAT,
+        lng: typeof data.lng === "number" ? data.lng : DEFAULT_SHOP_LNG,
+        radiusKm: typeof data.radiusKm === "number" ? data.radiusKm : DEFAULT_SHOP_RADIUS,
+        address: data.address || ""
+      };
       if (shopLatInput && data.lat !== undefined) shopLatInput.value = data.lat;
       if (shopLngInput && data.lng !== undefined) shopLngInput.value = data.lng;
       if (shopRadiusInput && data.radiusKm !== undefined) shopRadiusInput.value = data.radiusKm;
       if (shopAddressInput && data.address !== undefined) shopAddressInput.value = data.address;
       if (statusEl) {
         statusEl.style.color = "#16a34a";
-        statusEl.textContent = "📍 Active boundary: " + (data.radiusKm || 5) + " km around (" + data.lat + ", " + data.lng + ")";
+        statusEl.textContent = "📍 Active boundary: " + (data.radiusKm || DEFAULT_SHOP_RADIUS) + " km around (" + data.lat + ", " + data.lng + ")";
         const badge = document.getElementById("activeBoundaryBadge");
-        if (badge) badge.textContent = "Active: " + (data.radiusKm || 5) + " km radius";
+        if (badge) badge.textContent = "Active: " + (data.radiusKm || DEFAULT_SHOP_RADIUS) + " km radius";
       }
     } else {
-      if (shopLatInput && !shopLatInput.value) shopLatInput.value = 28.6139;
-      if (shopLngInput && !shopLngInput.value) shopLngInput.value = 77.2090;
-      if (shopRadiusInput && !shopRadiusInput.value) shopRadiusInput.value = 5;
+      if (shopLatInput && !shopLatInput.value) shopLatInput.value = DEFAULT_SHOP_LAT;
+      if (shopLngInput && !shopLngInput.value) shopLngInput.value = DEFAULT_SHOP_LNG;
+      if (shopRadiusInput && !shopRadiusInput.value) shopRadiusInput.value = DEFAULT_SHOP_RADIUS;
       if (statusEl) {
         statusEl.style.color = "#6b3fa0";
-        statusEl.textContent = "📍 Using default location (28.6139, 77.2090, 5 km). Save to update.";
+        statusEl.textContent = "📍 Using default location (" + DEFAULT_SHOP_LAT + ", " + DEFAULT_SHOP_LNG + ", " + DEFAULT_SHOP_RADIUS + " km). Save to update.";
       }
     }
   }, (err) => {
     console.warn("Unable to load shop location settings:", err);
   });
+
+  // Automatically autofill address when user enters or edits both latitude and longitude
+  let coordDebounceTimer = null;
+  const handleCoordInput = () => {
+    clearTimeout(coordDebounceTimer);
+    coordDebounceTimer = setTimeout(() => {
+      const latVal = parseFloat(shopLatInput?.value);
+      const lngVal = parseFloat(shopLngInput?.value);
+      if (!isNaN(latVal) && !isNaN(lngVal) && latVal >= -90 && latVal <= 90 && lngVal >= -180 && lngVal <= 180) {
+        window.reverseGeocodeAdminCoords(latVal, lngVal, false);
+      }
+    }, 600);
+  };
+  shopLatInput?.addEventListener("change", handleCoordInput);
+  shopLngInput?.addEventListener("change", handleCoordInput);
 }
+
+window.reverseGeocodeAdminCoords = async function (customLat, customLng, showAlert = true) {
+  const addressInput = document.getElementById("shopAddress");
+  const latInput = document.getElementById("shopLat");
+  const lngInput = document.getElementById("shopLng");
+  const statusEl = document.getElementById("shopLocationStatus");
+
+  const lat = customLat !== undefined ? parseFloat(customLat) : parseFloat(latInput?.value);
+  const lng = customLng !== undefined ? parseFloat(customLng) : parseFloat(lngInput?.value);
+
+  if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    if (showAlert) alert("Please enter valid numerical latitude (-90 to 90) and longitude (-180 to 180).");
+    return;
+  }
+
+  if (statusEl) {
+    statusEl.style.color = "#0284c7";
+    statusEl.textContent = "🔍 Resolving address from coordinates (" + lat + ", " + lng + ")...";
+  }
+
+  const cacheKey = "rev_" + Number(lat).toFixed(4).replace(/\./g, "p") + "_" + Number(lng).toFixed(4).replace(/\./g, "p");
+
+  try {
+    let resolvedAddress = null;
+
+    // 1. Query Mapbox if token configured
+    const token = window.__ENV__?.VITE_MAPBOX_TOKEN;
+    if (token) {
+      try {
+        const resp = await fetch(
+          "https://api.mapbox.com/geocoding/v5/mapbox.places/" +
+            lng +
+            "," +
+            lat +
+            ".json?access_token=" +
+            token +
+            "&limit=1"
+        );
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data.features && data.features.length > 0) {
+            resolvedAddress = data.features[0].place_name;
+          }
+        }
+      } catch (err) {
+        console.warn("Mapbox reverse geocode error:", err);
+      }
+    }
+
+    // 2. Fallback to Nominatim
+    if (!resolvedAddress) {
+      const resp = await fetch(
+        "https://nominatim.openstreetmap.org/reverse?format=json&lat=" +
+          lat +
+          "&lon=" +
+          lng +
+          "&zoom=18&addressdetails=1",
+        {
+          headers: {
+            Accept: "application/json"
+          }
+        }
+      );
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data && data.display_name) {
+          resolvedAddress = data.display_name;
+        }
+      }
+    }
+
+    if (!resolvedAddress) {
+      resolvedAddress = lat.toFixed(5) + ", " + lng.toFixed(5);
+    }
+
+    if (addressInput) {
+      addressInput.value = resolvedAddress;
+    }
+
+    if (statusEl) {
+      statusEl.style.color = "#16a34a";
+      statusEl.textContent = "📍 Address autofilled: " + resolvedAddress;
+    }
+  } catch (err) {
+    console.error("Reverse geocode failed:", err);
+    if (statusEl) {
+      statusEl.style.color = "#dc2626";
+      statusEl.textContent = "❌ Could not autofill address: " + err.message;
+    }
+  }
+};
+
+window.geocodeAdminAddress = async function () {
+  const addressInput = document.getElementById("shopAddress");
+  const latInput = document.getElementById("shopLat");
+  const lngInput = document.getElementById("shopLng");
+  const statusEl = document.getElementById("shopLocationStatus");
+  const address = addressInput?.value?.trim();
+  if (!address) {
+    alert("Please enter a shop address or landmark to locate.");
+    return;
+  }
+  if (statusEl) {
+    statusEl.style.color = "#0284c7";
+    statusEl.textContent = "🔍 Geocoding shop address...";
+  }
+
+  let hash = 0;
+  for (let i = 0; i < address.length; i++) {
+    hash = (hash << 5) - hash + address.charCodeAt(i);
+    hash |= 0;
+  }
+  const safePrefix = address.toLowerCase().replace(/[^a-z0-9]/g, "_").slice(0, 24).replace(/^_+|_+$/g, "") || "geo";
+  const cacheKey = "fwd_" + safePrefix + "_" + Math.abs(hash).toString(36);
+
+  try {
+    let resolved = null;
+
+    // 1. Query Mapbox if token configured
+    const token = window.__ENV__?.VITE_MAPBOX_TOKEN;
+    if (token) {
+      try {
+        const resp = await fetch(
+          "https://api.mapbox.com/geocoding/v5/mapbox.places/" +
+            encodeURIComponent(address) +
+            ".json?access_token=" +
+            token +
+            "&limit=1"
+        );
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data.features && data.features.length > 0) {
+            resolved = {
+              lat: data.features[0].center[1],
+              lng: data.features[0].center[0],
+              address: data.features[0].place_name,
+            };
+          }
+        }
+      } catch (err) {
+        console.warn("Mapbox lookup error:", err);
+      }
+    }
+
+    // 3. Fallback to Nominatim
+    if (!resolved) {
+      const resp = await fetch(
+        "https://nominatim.openstreetmap.org/search?format=json&q=" +
+          encodeURIComponent(address) +
+          "&limit=1"
+      );
+      if (resp.ok) {
+        const data = await resp.json();
+        if (Array.isArray(data) && data.length > 0) {
+          resolved = {
+            lat: parseFloat(data[0].lat),
+            lng: parseFloat(data[0].lon),
+            address: data[0].display_name,
+          };
+        }
+      }
+    }
+
+    if (!resolved || isNaN(resolved.lat) || isNaN(resolved.lng)) {
+      throw new Error("No coordinates found for the given address.");
+    }
+
+    const latRounded = Math.round(resolved.lat * 100000) / 100000;
+    const lngRounded = Math.round(resolved.lng * 100000) / 100000;
+    if (latInput) latInput.value = latRounded;
+    if (lngInput) lngInput.value = lngRounded;
+    if (addressInput && resolved.address) addressInput.value = resolved.address;
+
+    if (statusEl) {
+      statusEl.style.color = "#16a34a";
+      statusEl.textContent = "✅ Address located: (" + latRounded + ", " + lngRounded + ")";
+    }
+  } catch (err) {
+    if (statusEl) {
+      statusEl.style.color = "#dc2626";
+      statusEl.textContent = "❌ Geocode Error: " + err.message;
+    }
+  }
+};
 
 window.detectAdminGPS = function () {
   const statusEl = document.getElementById("shopLocationStatus");
@@ -2382,8 +2610,10 @@ window.detectAdminGPS = function () {
       if (lngEl) lngEl.value = lng;
       if (statusEl) {
         statusEl.style.color = "#16a34a";
-        statusEl.textContent = "✅ GPS coordinates detected: " + lat + ", " + lng;
+        statusEl.textContent = "✅ GPS coordinates detected: " + lat + ", " + lng + ". Autofilling address...";
       }
+      // Automatically autofill shop address from detected coordinates
+      window.reverseGeocodeAdminCoords(lat, lng, false);
     },
     (err) => {
       if (statusEl) {
@@ -2397,14 +2627,49 @@ window.detectAdminGPS = function () {
 
 window.saveShopLocation = async function () {
   const statusEl = document.getElementById("shopLocationStatus");
-  const lat = parseFloat(document.getElementById("shopLat")?.value);
-  const lng = parseFloat(document.getElementById("shopLng")?.value);
-  const radiusKm = parseFloat(document.getElementById("shopRadius")?.value);
+  let lat = parseFloat(document.getElementById("shopLat")?.value);
+  let lng = parseFloat(document.getElementById("shopLng")?.value);
+  let radiusKm = parseFloat(document.getElementById("shopRadius")?.value);
   const address = document.getElementById("shopAddress")?.value?.trim() || "";
-  if (isNaN(lat) || isNaN(lng) || isNaN(radiusKm) || radiusKm <= 0) {
-    alert("Please enter valid numerical coordinates and a positive radius (km).");
+
+  // If radius is not specified or invalid, default to DEFAULT_SHOP_RADIUS (5 km)
+  if (isNaN(radiusKm) || radiusKm <= 0) {
+    radiusKm = DEFAULT_SHOP_RADIUS || 5;
+    const radiusInput = document.getElementById("shopRadius");
+    if (radiusInput) radiusInput.value = radiusKm;
+  }
+
+  // If coordinates are missing or not numbers but an address was entered, auto-locate address first
+  if ((isNaN(lat) || isNaN(lng)) && address) {
+    if (statusEl) {
+      statusEl.style.color = "#0284c7";
+      statusEl.textContent = "🔍 Locating address coordinates before saving...";
+    }
+    await window.geocodeAdminAddress();
+    lat = parseFloat(document.getElementById("shopLat")?.value);
+    lng = parseFloat(document.getElementById("shopLng")?.value);
+  }
+
+  if (isNaN(lat) || isNaN(lng)) {
+    if (statusEl) {
+      statusEl.style.color = "#dc2626";
+      statusEl.textContent = "❌ Please enter a shop address or numerical coordinates.";
+    }
+    alert("Please enter a shop address to locate or enter valid numerical coordinates.");
     return;
   }
+
+  // Verify admin session before writing to Firestore
+  if (!auth.currentUser) {
+    const msg = "You are not logged in. Please open login.html and sign in with the admin email (" + ADMIN_EMAIL + ") for this database.";
+    if (statusEl) {
+      statusEl.style.color = "#dc2626";
+      statusEl.textContent = "❌ " + msg;
+    }
+    alert(msg);
+    return;
+  }
+
   if (statusEl) {
     statusEl.style.color = "#0284c7";
     statusEl.textContent = "💾 Saving shop boundary settings...";
@@ -2418,18 +2683,25 @@ window.saveShopLocation = async function () {
       address,
       updatedAt: new Date().toISOString(),
       updatedBy: auth.currentUser?.email || ADMIN_EMAIL
-    });
+    }, { merge: true });
     if (statusEl) {
       statusEl.style.color = "#16a34a";
       statusEl.textContent = "✅ Shop location & " + radiusKm + " km delivery boundary saved successfully!";
     }
   } catch (err) {
     console.error("Save shop location failed:", err);
+    const currentUserEmail = auth.currentUser?.email || "none (unauthenticated)";
+    let friendlyMsg = err.message;
+
+    if (err.code === "permission-denied" || err.message?.includes("insufficient permissions")) {
+      friendlyMsg = "Missing permissions. Signed in as '" + currentUserEmail + "'. Ensure you are logged in as '" + ADMIN_EMAIL + "' and that your Firestore Security Rules in Firebase Console allow writes to /settings/shop.";
+    }
+
     if (statusEl) {
       statusEl.style.color = "#dc2626";
-      statusEl.textContent = "❌ Failed to save: " + err.message;
+      statusEl.textContent = "❌ Failed to save: " + friendlyMsg;
     }
-    reportWriteError("Save Shop Location", err);
+    alert("Save Shop Location failed: " + friendlyMsg);
   }
 };
 

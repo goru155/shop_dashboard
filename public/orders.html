@@ -252,7 +252,12 @@
     </p>
 
     <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: #333;">Shop Address / Landmark</label>
-    <input id="shopAddress" placeholder="e.g. Shop No. 12, Main Market" style="width: 100%; padding: 8px 10px; margin-bottom: 12px; border-radius: 6px; border: 1px solid #ccc; box-sizing: border-box; font-size: 14px; font-family: 'Segoe UI', Arial, sans-serif;">
+    <div style="display: flex; gap: 8px; margin-bottom: 12px; align-items: center;">
+      <input id="shopAddress" placeholder="e.g. Shop No. 12, Main Market" style="width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid #ccc; box-sizing: border-box; font-size: 14px; font-family: 'Segoe UI', Arial, sans-serif; margin-bottom: 0;">
+      <button type="button" onclick="geocodeAdminAddress()" style="background: #2563eb; color: white; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; white-space: nowrap; font-size: 13px; font-weight: 600; font-family: 'Segoe UI', Arial, sans-serif;">
+        🔍 Locate Address
+      </button>
+    </div>
 
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 12px;">
       <div>
@@ -265,7 +270,7 @@
       </div>
       <div>
         <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: #333;">Delivery Radius (km)</label>
-        <input id="shopRadius" type="number" min="0.1" step="0.5" placeholder="e.g. 5" style="width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid #ccc; box-sizing: border-box; font-size: 14px; font-family: 'Segoe UI', Arial, sans-serif;">
+        <input id="shopRadius" type="number" min="0.1" step="0.5" value="5" placeholder="e.g. 5" style="width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid #ccc; box-sizing: border-box; font-size: 14px; font-family: 'Segoe UI', Arial, sans-serif;">
       </div>
     </div>
 
